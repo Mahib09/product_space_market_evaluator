@@ -1,0 +1,63 @@
+{
+  "product_space": "string",
+
+  "incumbents": {
+    "players": [
+      {
+        "name": "string",
+        "offerings": "string",
+        "target_customers": "string",
+        "differentiators": "string",
+        "sources": [Source]
+      }
+    ]
+  },
+
+  "startups": {
+    "companies": [
+      {
+        "name": "string",
+        "stage": "string",
+        "amount_usd": 0,
+        "date": "YYYY-MM-DD",
+        "lead_investors": ["string"],
+        "sources": [Source]
+      }
+    ],
+    "total_capital_usd": 0,
+    "startup_count": 0,
+    "top_investors": ["string"],
+    "velocity_note": "string",
+    "sources": [Source]
+  },
+
+  "market_scan": {
+    "tam_usd": 0,
+    "tam_year": 2024,
+    "sam_usd": 0,
+    "sam_year": 2024,
+    "cagr_5y_percent": 0,
+    "confidence": "high | medium | low",
+    "notes": "string",
+    "sources": [Source]
+  },
+
+  "judgement": {
+    "verdict": "GO | NO_GO",
+    "score": 7,
+    "breakdown": {
+      "growth_score": 8,
+      "competition_score": 7,
+      "white_space": 1
+    },
+    "summary": "string",
+    "confidence": "high | medium | low"
+  },
+
+  "errors": [
+    {
+      "agent": "agent1 | agent2 | agent3",
+      "message": "string"
+    }
+  ]
+}

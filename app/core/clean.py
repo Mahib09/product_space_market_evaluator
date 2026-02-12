@@ -20,6 +20,38 @@ _RESEARCH_KEYWORDS = re.compile(
 )
 
 
+_BLOCKED_DOMAINS = {
+    "wikipedia.org",
+    "en.wikipedia.org",
+    "en.m.wikipedia.org",
+    "simple.wikipedia.org",
+    "wikidata.org",
+    "wikimedia.org",
+    "quora.com",
+    "reddit.com",
+    "pinterest.com",
+    "youtube.com",
+    "facebook.com",
+    "twitter.com",
+    "x.com",
+    "linkedin.com",
+    "instagram.com",
+    "tiktok.com",
+}
+
+
+def _is_blocked_domain(url: str) -> bool:
+    """Return True if the URL belongs to a low-signal domain."""
+    try:
+        host = urlparse(str(url)).netloc.lower()
+        # Strip www. prefix for matching
+        if host.startswith("www."):
+            host = host[4:]
+        return host in _BLOCKED_DOMAINS
+    except Exception:
+        return False
+
+
 def _is_valid_url(url: str) -> bool:
     try:
         parsed = urlparse(str(url))
@@ -71,6 +103,10 @@ def clean_sources(
 
         if not _is_valid_url(url):
             logger.debug("Dropping bad URL: %s", url)
+            continue
+
+        if _is_blocked_domain(url):
+            logger.debug("Dropping blocked domain: %s", url)
             continue
 
         # Use trimmed text only for length checks — don't mutate the original

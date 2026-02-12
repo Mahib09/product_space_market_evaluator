@@ -79,9 +79,10 @@ async def run_agent3(
     errors.extend(search_errors)
 
     # --- 2. Clean ---
-    sources = clean_sources(raw_sources, max_results=25)
+    sources = clean_sources(raw_sources, max_results=10)
 
     # --- 3. Extract ---
+    logger.info("[Agent3] Sending %d sources to extraction", len(sources))
     instructions = _EXTRACTION_INSTRUCTIONS.replace("{product_space}", product_space)
 
     report, extract_errors = await extract_structured(
@@ -114,7 +115,7 @@ async def run_agent3(
 
         if followup_sources:
             merged = raw_sources + followup_sources
-            sources = clean_sources(merged, max_results=25)
+            sources = clean_sources(merged, max_results=10)
 
             report2, extract_errors2 = await extract_structured(
                 agent=_AGENT,

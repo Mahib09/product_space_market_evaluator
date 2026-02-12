@@ -42,14 +42,16 @@ async def run_agent1(
     sources, search_errors = await web_search(query, max_results=10)
     errors.extend(search_errors)
     
-    print("\n[DEBUG] Raw sources count:", len(sources))
+    logger.info("[Agent1] Raw sources: %d", len(sources))
 
     # --- 2. Clean ---
     sources = clean_sources(sources, max_results=12)
-    print("[DEBUG] Cleaned sources count:", sources[0])
-    print(sources[0])
+    logger.info("[Agent1] Cleaned sources: %d", len(sources))
+    for s in sources[:3]:
+        logger.info("[Agent1]   - %s (%s)", s.title[:60], s.url)
 
     # --- 3. Extract ---
+    logger.info("[Agent1] Sending %d sources to extraction", len(sources))
     report, extract_errors = await extract_structured(
         agent=_AGENT,
         schema_model=IncumbentsReport,

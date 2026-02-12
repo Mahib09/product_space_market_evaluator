@@ -1,6 +1,9 @@
 from __future__ import annotations
 
+import asyncio
 import logging
+import re
+import time
 from collections import Counter
 
 from app.core.search import web_search
@@ -34,6 +37,16 @@ _EXTRACTION_INSTRUCTIONS = (
 )
 
 _MAX_COMPANIES = 10
+
+_FUNDING_KEYWORDS = re.compile(
+    r"raised|funding|seed|series\s*[abc]|led\s+by|round|backed\s+by|venture",
+    re.IGNORECASE,
+)
+
+
+def _has_funding_signal(src: Source) -> bool:
+    """Return True if title or snippet mentions funding-related keywords."""
+    return bool(_FUNDING_KEYWORDS.search(f"{src.title} {src.snippet}"))
 
 
 def _deduplicate_companies(companies: list) -> list:
@@ -87,28 +100,45 @@ async def run_agent2(
     Always returns a valid Startups report, even on failure (with empty companies).
     """
     errors: list[ErrorItem] = []
+    t_total = time.perf_counter()
 
-    # --- 1. Search (two queries, merged) ---
+    # --- 1. Search (3 queries, concurrent) ---
     query1 = f"{product_space} startup funding Seed Series A Series B 2024 2025"
     query2 = f'{product_space} "raised" "Series A" "Series B" investors'
     query3 = f'{product_space} "led by" investors funding round'
 
+    async def _timed_search(label: str, query: str):
+        t0 = time.perf_counter()
+        result = await web_search(query, max_results=12)
+        logger.info("[Agent2] %s in %.2fs", label, time.perf_counter() - t0)
+        return result
 
-    sources1, errs1 = await web_search(query1, max_results=25)
-    sources2, errs2 = await web_search(query2, max_results=25)
-    sources3, errs3 = await web_search(query3, max_results=25)
+    t_search = time.perf_counter()
+    (sources1, errs1), (sources2, errs2), (sources3, errs3) = await asyncio.gather(
+        _timed_search("QUERY1_DONE", query1),
+        _timed_search("QUERY2_DONE", query2),
+        _timed_search("QUERY3_DONE", query3),
+    )
+    logger.info("[Agent2] SEARCH_TOTAL in %.2fs", time.perf_counter() - t_search)
     errors.extend(errs1)
     errors.extend(errs2)
     errors.extend(errs3)
 
     merged = sources1 + sources2 + sources3
 
-    # --- 2. Clean ---
-    sources = clean_sources(merged, max_results=60)
+    # --- 2. Clean + prioritise funding-relevant sources ---
+    t_clean = time.perf_counter()
+    cleaned = clean_sources(merged, max_results=40)
+    funding_hits = [s for s in cleaned if _has_funding_signal(s)]
+    others = [s for s in cleaned if not _has_funding_signal(s)]
+    sources = (funding_hits + others)[:15]
+    logger.info("[Agent2] CLEAN_DONE in %.2fs (sources=%d)", time.perf_counter() - t_clean, len(sources))
 
     # --- 3. Extract ---
+    logger.info("[Agent2] Sending %d sources to extraction", len(sources))
     instructions = _EXTRACTION_INSTRUCTIONS.replace("{product_space}", product_space)
 
+    t_extract = time.perf_counter()
     report, extract_errors = await extract_structured(
         agent=_AGENT,
         schema_model=Startups,
@@ -116,6 +146,8 @@ async def run_agent2(
         sources=sources,
         instructions=instructions,
     )
+    companies_count = len(report.companies) if report else 0
+    logger.info("[Agent2] EXTRACT_DONE in %.2fs (companies=%d)", time.perf_counter() - t_extract, companies_count)
     errors.extend(extract_errors)
 
     # --- 4. Handle extraction failure ---
@@ -124,9 +156,11 @@ async def run_agent2(
             errors.append(
                 ErrorItem(agent=_AGENT, message="No startups extracted")
             )
+        logger.info("[Agent2] TOTAL in %.2fs (extraction failed)", time.perf_counter() - t_total)
         return Startups(companies=[], sources=sources, startup_count=0), errors
 
     # --- 5. Post-process ---
+    t_post = time.perf_counter()
     report.companies = _deduplicate_companies(report.companies)
     report.companies = report.companies[:_MAX_COMPANIES]
 
@@ -137,5 +171,7 @@ async def run_agent2(
     report.top_investors = _compute_top_investors(report.companies)
     report.velocity_note = _compute_velocity_note(report.companies)
     report.sources = sources
+    logger.info("[Agent2] POST_DONE in %.2fs", time.perf_counter() - t_post)
 
+    logger.info("[Agent2] TOTAL in %.2fs", time.perf_counter() - t_total)
     return report, errors

@@ -1,4 +1,6 @@
+import asyncio
 import logging
+import random
 
 from openai import AsyncOpenAI
 from pydantic import ValidationError
@@ -11,6 +13,16 @@ logger = logging.getLogger(__name__)
 client = AsyncOpenAI(api_key=OPENAI_API_KEY)
 
 _MAX_RETRIES = 1
+
+# In-memory cache: query → (sources, errors)
+# Avoids re-searching the same query within a pipeline run.
+_cache: dict[str, tuple[list[Source], list[ErrorItem]]] = {}
+
+
+def clear_search_cache() -> None:
+    """Clear the search cache (call between pipeline runs if needed)."""
+    _cache.clear()
+
 
 def _extract_sources_from_response(response) -> list[Source]:
     sources: list[Source] = []
@@ -49,6 +61,12 @@ async def web_search(
     if not query or not query.strip():
         raise ValueError("query must be a non-empty string")
 
+    # Check cache first
+    cache_key = f"{query.strip().lower()}|{max_results}"
+    if cache_key in _cache:
+        logger.debug("Cache hit for query: %s", query[:60])
+        return _cache[cache_key]
+
     errors: list[ErrorItem] = []
 
     for attempt in range(_MAX_RETRIES + 1):
@@ -61,7 +79,9 @@ async def web_search(
             )
 
             sources = _extract_sources_from_response(response)
-            return sources, errors
+            result = sources[:max_results], errors
+            _cache[cache_key] = result
+            return result
 
         except Exception as exc:
             logger.error(
@@ -78,5 +98,10 @@ async def web_search(
                     )
                 )
                 return [], errors
+
+        # Jittered delay before retry
+        jitter = random.uniform(0.5, 1.5)
+        logger.info("Retrying web_search in %.1fs...", jitter)
+        await asyncio.sleep(jitter)
 
     return [], errors

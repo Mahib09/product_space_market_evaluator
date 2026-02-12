@@ -102,6 +102,11 @@ class ErrorItem(BaseModel):
     agent: str
     message: str
 
+# --- Request ---
+
+class EvaluateRequest(BaseModel):
+    product_space: str = Field(min_length=2)
+
 # --- Final API result ---
 
 class FinalResult(BaseModel):

@@ -41,10 +41,6 @@ class Player(BaseModel):
     sources: list[Source] = Field(default_factory=list)
 
 
-class Incumbents(BaseModel):
-    players: list[Player] = Field(default_factory=list)
-
-
 class IncumbentsReport(BaseModel):
     players: list[Player] = Field(default_factory=list)
     sources: list[Source] = Field(default_factory=list)
@@ -111,7 +107,7 @@ class ErrorItem(BaseModel):
 class FinalResult(BaseModel):
     request_id: str
     product_space: str
-    incumbents: Incumbents | None = None
+    incumbents: IncumbentsReport | None = None
     startups: Startups | None = None
     market_scan: MarketScan | None = None
     judgement: Judgement | None = None

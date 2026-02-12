@@ -55,9 +55,18 @@ def clean_sources(
       5. Sort: research-like sources first, then original order
       6. Cap at max_results
     """
+    # Normalize www. URLs by prepending https://
+    normalized: list[Source] = []
+    for src in sources:
+        url = str(src.url).strip()
+        if url.lower().startswith("www."):
+            url = f"https://{url}"
+            src = Source(url=url, title=src.title, snippet=src.snippet)
+        normalized.append(src)
+
     cleaned: list[Source] = []
 
-    for src in sources:
+    for src in normalized:
         url = str(src.url).strip()
 
         if not _is_valid_url(url):
@@ -87,5 +96,10 @@ def clean_sources(
 
     # Stable sort: research sources float up, rest keeps original order
     deduped.sort(key=lambda s: -_research_score(s))
+
+    # Fallback: never return empty when input was non-empty
+    if not deduped and sources:
+        fallback = cleaned if cleaned else normalized
+        return fallback[:max_results]
 
     return deduped[:max_results]

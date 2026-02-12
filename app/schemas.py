@@ -1,9 +1,11 @@
-from datetime import date
+from __future__ import annotations
 
+import datetime
 from enum import Enum
 
+from typing import Annotated, Any
+
 from pydantic import BaseModel, Field, HttpUrl
-from typing import Annotated
 
 
 class Confidence(str, Enum):
@@ -22,11 +24,14 @@ class AgentName(str, Enum):
     AGENT2 = "agent2"
     AGENT3 = "agent3"
 
+# --- Evidence ---
 
 class Source(BaseModel):
     url: HttpUrl
     title: str
+    snippet: str
 
+# --- Incumbents ---
 
 class Player(BaseModel):
     name: str
@@ -40,11 +45,17 @@ class Incumbents(BaseModel):
     players: list[Player] = Field(default_factory=list)
 
 
+class IncumbentsReport(BaseModel):
+    players: list[Player] = Field(default_factory=list)
+    sources: list[Source] = Field(default_factory=list)
+
+# --- Startups ---
+
 class Company(BaseModel):
     name: str
     stage: str
     amount_usd: float | None = None
-    date: date | None = None
+    date: datetime.date | None = None
     lead_investors: list[str] = Field(default_factory=list)
     sources: list[Source] = Field(default_factory=list)
 
@@ -57,6 +68,11 @@ class Startups(BaseModel):
     velocity_note: str = ""
     sources: list[Source] = Field(default_factory=list)
 
+    def model_post_init(self, __context: Any) -> None:
+        if self.startup_count is None:
+            self.startup_count = len(self.companies)
+
+# --- Market scan ---
 
 class MarketScan(BaseModel):
     tam_usd: float | None = None
@@ -68,30 +84,35 @@ class MarketScan(BaseModel):
     notes: str = ""
     sources: list[Source] = Field(default_factory=list)
 
+# --- Judgement ---
+Score10 = Annotated[int, Field(ge=0, le=10)]
 
 class Breakdown(BaseModel):
-    growth_score: Annotated[int, Field(ge=0, le=100)]
-    competition_score: Annotated[int, Field(ge=0, le=100)]
-    white_space: Annotated[int, Field(ge=0, le=100)]
+    growth_score: Score10
+    competition_score: Score10
+    white_space: Score10
 
 
 class Judgement(BaseModel):
     verdict: Verdict
-    score: Annotated[int, Field(ge=0, le=100)]
+    score: Score10
     breakdown: Breakdown
     summary: str = ""
     confidence: Confidence | None = None
 
+# --- Errors ---
 
-class Error(BaseModel):
-    agent: AgentName
+class ErrorItem(BaseModel):
+    agent: str
     message: str
 
+# --- Final API result ---
 
 class FinalResult(BaseModel):
+    request_id: str
     product_space: str
     incumbents: Incumbents | None = None
     startups: Startups | None = None
     market_scan: MarketScan | None = None
     judgement: Judgement | None = None
-    errors: list[Error] = Field(default_factory=list)
+    errors: list[ErrorItem] = Field(default_factory=list)

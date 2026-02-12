@@ -58,19 +58,21 @@ def clean_sources(
     cleaned: list[Source] = []
 
     for src in sources:
-        title = _trim(src.title)
-        snippet = _trim(src.snippet)
         url = str(src.url).strip()
 
         if not _is_valid_url(url):
             logger.debug("Dropping bad URL: %s", url)
             continue
 
-        if len(title) < _MIN_TITLE_LEN and len(snippet) < _MIN_SNIPPET_LEN:
-            logger.debug("Dropping low-quality source: %s", title)
+        # Use trimmed text only for length checks — don't mutate the original
+        title_trimmed = _trim(src.title)
+        snippet_trimmed = _trim(src.snippet)
+
+        if len(title_trimmed) < _MIN_TITLE_LEN and len(snippet_trimmed) < _MIN_SNIPPET_LEN:
+            logger.debug("Dropping low-quality source: %s", src.title)
             continue
 
-        cleaned.append(Source(url=url, title=title, snippet=snippet))
+        cleaned.append(src)
 
     # Dedupe by normalized URL (scheme + netloc + path, ignore query/fragment)
     seen: set[str] = set()

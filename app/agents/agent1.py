@@ -1,6 +1,8 @@
 from __future__ import annotations
 
 import logging
+import time
+import uuid
 
 from app.core.search import web_search
 from app.core.clean import clean_sources
@@ -35,23 +37,42 @@ async def run_agent1(
 
     Always returns a valid IncumbentsReport, even on failure (with empty players).
     """
+    request_id = uuid.uuid4().hex[:12]
+    total_start = time.perf_counter()
+
     errors: list[ErrorItem] = []
+    logger.info('[Agent1] START request_id=%s product_space="%s"', request_id, product_space)
 
     # --- 1. Search ---
+    logger.info("[Agent1] SEARCH_START request_id=%s", request_id)
     query = f"{product_space} top vendors competitors market leaders enterprise"
+
+    search_start = time.perf_counter()
     sources, search_errors = await web_search(query, max_results=10)
+    search_s = time.perf_counter() - search_start
+
     errors.extend(search_errors)
-    
-    logger.info("[Agent1] Raw sources: %d", len(sources))
+    raw_count = len(sources) if sources else 0
+    logger.info("[Agent1] SEARCH_DONE request_id=%s in %.2fs raw=%s", request_id, search_s, raw_count)
 
     # --- 2. Clean ---
+    clean_start = time.perf_counter()
     sources = clean_sources(sources, max_results=12)
-    logger.info("[Agent1] Cleaned sources: %d", len(sources))
+    clean_s = time.perf_counter() - clean_start
+
+    cleaned_count = len(sources) if sources else 0
+    logger.info("[Agent1] CLEAN_DONE request_id=%s in %.2fs sources=%s", request_id, clean_s, cleaned_count)
+
+    # keep your existing debug lines, just add request_id
+    logger.info("[Agent1] Cleaned sources request_id=%s count=%d", request_id, len(sources))
     for s in sources[:3]:
-        logger.info("[Agent1]   - %s (%s)", s.title[:60], s.url)
+        logger.info("[Agent1] SOURCE request_id=%s title=%s url=%s", request_id, s.title[:60], s.url)
 
     # --- 3. Extract ---
-    logger.info("[Agent1] Sending %d sources to extraction", len(sources))
+    sent_count = len(sources)
+    logger.info("[Agent1] EXTRACT_START request_id=%s sources=%s", request_id, sent_count)
+
+    extract_start = time.perf_counter()
     report, extract_errors = await extract_structured(
         agent=_AGENT,
         schema_model=IncumbentsReport,
@@ -59,18 +80,34 @@ async def run_agent1(
         sources=sources,
         instructions=_EXTRACTION_INSTRUCTIONS,
     )
+    extract_s = time.perf_counter() - extract_start
+
     errors.extend(extract_errors)
+
+    players_count = len(report.players) if report and report.players else 0
+    logger.info("[Agent1] EXTRACT_DONE request_id=%s in %.2fs players=%s", request_id, extract_s, players_count)
 
     # --- 4. Handle extraction failure ---
     if report is None:
         if not any(e.agent == _AGENT for e in errors):
-            errors.append(
-                ErrorItem(agent=_AGENT, message="No incumbents extracted")
-            )
+            errors.append(ErrorItem(agent=_AGENT, message="No incumbents extracted"))
+
+        total_s = time.perf_counter() - total_start
+        logger.info("[Agent1] TOTAL request_id=%s in %.2fs status=fallback errors=%s", request_id, total_s, len(errors))
         return IncumbentsReport(players=[], sources=sources), errors
 
     # --- 5. Post-process ---
     report.players = report.players[:_MAX_PLAYERS]
     report.sources = sources
+
+    total_s = time.perf_counter() - total_start
+    logger.info(
+        "[Agent1] TOTAL request_id=%s in %.2fs players=%s sources=%s errors=%s",
+        request_id,
+        total_s,
+        len(report.players),
+        len(report.sources),
+        len(errors),
+    )
 
     return report, errors

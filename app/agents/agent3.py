@@ -1,6 +1,8 @@
 from __future__ import annotations
 
 import logging
+import time
+import uuid
 
 from app.core.search import web_search
 from app.core.clean import clean_sources
@@ -54,9 +56,15 @@ async def run_agent3(
 
     Always returns a valid MarketScan, even on failure.
     """
+    request_id = uuid.uuid4().hex[:12]
+    t_total = time.perf_counter()
     errors: list[ErrorItem] = []
+    
+    logger.info('[Agent3] START request_id=%s product_space="%s"', request_id, product_space)
 
     # --- 1. Search (4 targeted queries) ---
+    logger.info("[Agent3] SEARCH_START request_id=%s", request_id)
+    t_search = time.perf_counter()
     queries = [
     # Direct market sizing
     f"{product_space} market size 2024 2025 CAGR",
@@ -77,22 +85,46 @@ async def run_agent3(
 
     raw_sources, search_errors = await _search_and_collect(queries, max_results_per_query=10)
     errors.extend(search_errors)
+    search_s = time.perf_counter() - t_search
+    raw_count = len(raw_sources) if raw_sources else 0
+    logger.info(
+        "[Agent3] SEARCH_DONE request_id=%s in %.2fs raw=%d",
+        request_id,
+        search_s,
+        raw_count,
+    )
 
     # --- 2. Clean ---
     sources = clean_sources(raw_sources, max_results=10)
+    logger.info("[Agent3] CLEAN_DONE")
 
-    # --- 3. Extract ---
+   # --- 3. Extract ---
     logger.info("[Agent3] Sending %d sources to extraction", len(sources))
-    instructions = _EXTRACTION_INSTRUCTIONS.replace("{product_space}", product_space)
 
-    report, extract_errors = await extract_structured(
+    t0 = time.perf_counter()
+    logger.info("[Agent3] EXTRACT_START sources=%d", len(sources))
+    try:
+        instructions = _EXTRACTION_INSTRUCTIONS.replace("{product_space}", product_space)
+        report, extract_errors = await extract_structured(
         agent=_AGENT,
         schema_model=MarketScan,
         product_space=product_space,
         sources=sources,
         instructions=instructions,
     )
-    errors.extend(extract_errors)
+        logger.info(
+        "[Agent3] EXTRACT_DONE seconds=%.2f errors=%d",
+        time.perf_counter() - t0,
+        len(extract_errors or []),
+        )
+        errors.extend(extract_errors or [])
+    except Exception:
+        logger.exception(
+            "[Agent3] EXTRACT_FAILED seconds=%.2f",
+            time.perf_counter() - t0,
+        )
+        raise
+
 
     # --- 4. Handle extraction failure ---
     if report is None:

@@ -3,6 +3,7 @@ from __future__ import annotations
 import json
 import logging
 from typing import TypeVar
+import time
 
 from openai import AsyncOpenAI
 from pydantic import BaseModel, ValidationError
@@ -77,24 +78,30 @@ async def extract_structured(
     instructions: str,
     max_retries: int = 3,
 ) -> tuple[T | None, list[ErrorItem]]:
-    """Extract structured data from sources using OpenAI structured outputs.
-
-    Returns:
-        A tuple of (parsed model instance or None, list of errors).
-    """
     errors: list[ErrorItem] = []
 
     if not sources:
-        errors.append(
-            ErrorItem(agent=agent, message="No sources provided for extraction")
-        )
+        errors.append(ErrorItem(agent=agent, message="No sources provided for extraction"))
         return None, errors
 
+    t0 = time.perf_counter()
+
+    # ---- Build evidence (consider truncating inside _build_evidence_block) ----
+    t_ev = time.perf_counter()
     evidence_block = _build_evidence_block(sources)
+    ev_s = time.perf_counter() - t_ev
+
+    # Useful proxy for “how big is my prompt”
+    evidence_chars = len(evidence_block or "")
+    logger.info(
+        "[Extract] agent=%s schema=%s sources=%d evidence_chars=%d build_evidence=%.2fs",
+        agent, schema_model.__name__, len(sources), evidence_chars, ev_s
+    )
 
     user_prompt = (
         f"Product space: {product_space}\n\n"
         f"{instructions}\n\n"
+        "Return ONLY valid JSON that matches the schema. No markdown.\n\n"
         f"--- EVIDENCE ---\n{evidence_block}\n--- END EVIDENCE ---"
     )
 
@@ -102,23 +109,37 @@ async def extract_structured(
 
     last_validation_error: str | None = None
 
-    for attempt in range(max_retries):
-        try:
-            messages: list[dict] = [
-                {"role": "system", "content": _SYSTEM_PROMPT},
-                {"role": "user", "content": user_prompt},
-            ]
+    # Separate counters: validation retries vs API retries
+    validation_attempts = 0
+    api_attempts = 0
+    max_api_attempts = 6  # allows transient retries without giving up too fast
 
-            if last_validation_error and attempt > 0:
-                messages.append({
+    while validation_attempts < max_retries and api_attempts < max_api_attempts:
+        messages: list[dict] = [
+            {"role": "system", "content": _SYSTEM_PROMPT},
+            {"role": "user", "content": user_prompt},
+        ]
+
+        if last_validation_error and validation_attempts > 0:
+            messages.append(
+                {
                     "role": "user",
                     "content": (
-                        f"Your previous output failed validation:\n"
-                        f"{last_validation_error}\n\n"
-                        "Fix the output to match the schema exactly. "
-                        "No extra keys."
+                        "Your previous output failed validation.\n"
+                        f"Validation error:\n{last_validation_error}\n\n"
+                        "Fix the JSON to match the schema exactly. No extra keys."
                     ),
-                })
+                }
+            )
+
+        try:
+            api_attempts += 1
+            t_api = time.perf_counter()
+            logger.info(
+                "[Extract] API_START agent=%s schema=%s api_attempt=%d/%d validation_attempt=%d/%d",
+                agent, schema_model.__name__, api_attempts, max_api_attempts,
+                validation_attempts + 1, max_retries
+            )
 
             response = await _client.responses.create(
                 model=OPENAI_MODEL_EXTRACT,
@@ -133,31 +154,45 @@ async def extract_structured(
                 },
             )
 
+            api_s = time.perf_counter() - t_api
             raw = response.output_text
+
+            t_parse = time.perf_counter()
             data = json.loads(raw)
             result = schema_model.model_validate(data)
+            parse_s = time.perf_counter() - t_parse
+
+            logger.info(
+                "[Extract] API_DONE agent=%s schema=%s api_seconds=%.2f parse_seconds=%.2f total_seconds=%.2f",
+                agent, schema_model.__name__, api_s, parse_s, time.perf_counter() - t0
+            )
             return result, errors
 
         except (json.JSONDecodeError, ValidationError) as exc:
+            validation_attempts += 1
             last_validation_error = str(exc)
             logger.warning(
-                "Extraction validation failed (attempt %d/%d): %s",
-                attempt + 1,
-                max_retries,
-                exc,
+                "[Extract] VALIDATION_FAILED agent=%s schema=%s attempt=%d/%d err=%s",
+                agent, schema_model.__name__, validation_attempts, max_retries, exc
             )
+            # continue loop -> tries again
 
         except Exception as exc:
-            logger.error("Extraction API call failed: %s", exc)
-            errors.append(
-                ErrorItem(agent=agent, message=f"Extraction API call failed: {exc}")
+            # Treat as API/transient failure; keep trying a few times
+            logger.warning(
+                "[Extract] API_FAILED agent=%s schema=%s api_attempt=%d/%d err=%r",
+                agent, schema_model.__name__, api_attempts, max_api_attempts, exc
             )
-            return None, errors
+            # If we've exhausted API attempts, return failure
+            if api_attempts >= max_api_attempts:
+                errors.append(ErrorItem(agent=agent, message=f"Extraction API call failed: {exc!r}"))
+                return None, errors
 
     errors.append(
         ErrorItem(
             agent=agent,
-            message=f"Extraction failed after {max_retries} attempts: {last_validation_error}",
+            message=f"Extraction failed after validation_attempts={validation_attempts}/{max_retries}, "
+                    f"api_attempts={api_attempts}: {last_validation_error}",
         )
     )
     return None, errors

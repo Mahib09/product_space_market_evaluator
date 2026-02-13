@@ -10,6 +10,9 @@ from app.schemas import (
     Verdict,
 )
 
+import logging
+logger = logging.getLogger(__name__)
+
 
 def _clamp(value: float, lo: int = 0, hi: int = 10) -> int:
     return max(lo, min(hi, round(value)))
@@ -157,6 +160,9 @@ def run_agent4(
         parts.append("Competitive density or weak growth limits opportunity")
 
     summary = ". ".join(parts) + "."
+    logger.info(
+    "[Agent4] SCORE_DONE",
+)
 
     return Judgement(
         verdict=verdict,

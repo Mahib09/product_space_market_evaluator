@@ -3,6 +3,7 @@ from __future__ import annotations
 import asyncio
 import logging
 import uuid
+import time
 
 from app.agents.agent1 import run_agent1
 from app.agents.agent2 import run_agent2
@@ -59,6 +60,7 @@ async def _run_agent1_safe(
     product_space: str,
 ) -> tuple[IncumbentsReport, list[ErrorItem]]:
     try:
+        logger.info("[Agent1] START")
         return await run_agent1(product_space)
     except Exception as exc:
         logger.error("agent1 crashed: %s", exc)
@@ -71,6 +73,7 @@ async def _run_agent2_safe(
     product_space: str,
 ) -> tuple[Startups, list[ErrorItem]]:
     try:
+        logger.info("[Agent3] START")
         return await run_agent2(product_space)
     except Exception as exc:
         logger.error("agent2 crashed: %s", exc)
@@ -83,6 +86,7 @@ async def _run_agent3_safe(
     product_space: str,
 ) -> tuple[MarketScan, list[ErrorItem]]:
     try:
+        logger.info("[Agent3] START")
         return await run_agent3(product_space)
     except Exception as exc:
         logger.error("agent3 crashed: %s", exc)
@@ -100,9 +104,14 @@ async def run_pipeline(product_space: str) -> FinalResult:
     after the first three complete. No single agent failure kills the pipeline.
     """
     request_id = uuid.uuid4().hex[:12]
+    start = time.perf_counter()
+
+    logger.info('[Orchestrator] START request_id=%s product_space="%s"', request_id, product_space)
+    
 
     # --- Step 0: Validate input ---
     if not product_space or not product_space.strip():
+        logger.info('[Orchestrator] DONE request_id=%s status=400 total=%.2fs errors=1', request_id, time.perf_counter() - start)
         return FinalResult(
             request_id=request_id,
             product_space=product_space or "",
@@ -110,24 +119,33 @@ async def run_pipeline(product_space: str) -> FinalResult:
         )
 
     # --- Step 1: Run agents 1-3 concurrently ---
+    logger.info("[Orchestrator] LAUNCH request_id=%s agents=3 mode=concurrent", request_id)
+    
     (incumbents, errs1), (startups, errs2), (market, errs3) = await asyncio.gather(
         _run_agent1_safe(product_space),
         _run_agent2_safe(product_space),
         _run_agent3_safe(product_space),
     )
+    logger.info("[Orchestrator] LAUNCH agents=3 mode=concurrent")
 
     # --- Step 2: Merge errors ---
     all_errors: list[ErrorItem] = errs1 + errs2 + errs3
 
     # --- Step 3: Run judgement (sync, no API calls) ---
     try:
+        logger.info("[Orchestrator] JUDGEMENT_START request_id=%s", request_id)
         judgement = run_agent4(incumbents, startups, market)
+        logger.info(
+            "[Orchestrator] JUDGEMENT request_id=%s verdict=%s score=%s",
+            request_id, judgement.verdict, judgement.score
+        )
     except Exception as exc:
         logger.error("agent4 crashed: %s", exc)
         all_errors.append(
             ErrorItem(agent="agent4", message=f"unexpected error: {exc}"),
         )
         judgement = _fallback_judgement()
+        logger.info("[Orchestrator] DONE request")
 
     # --- Step 4: Build FinalResult ---
     return FinalResult(

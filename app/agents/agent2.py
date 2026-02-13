@@ -190,8 +190,7 @@ async def run_agent2(product_space: str) -> tuple[Startups, list[ErrorItem]]:
 
     # --- 2. Extract (bounded) ---
     instructions = _EXTRACTION_INSTRUCTIONS.replace("{product_space}", product_space)
-    logger.info("[Agent2] EXTRACT_START request_id=%s timeout=%ds", request_id)
-
+    logger.info("[Agent2] EXTRACT_START")
     t_extract = time.perf_counter()
     try:
         report, extract_errors = await asyncio.wait_for(

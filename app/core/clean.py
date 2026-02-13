@@ -152,7 +152,11 @@ def clean_sources(
 
     # Fallback: never return empty when input was non-empty
     if not deduped and sources:
-        fallback = cleaned if cleaned else normalized
+        with_text = [s for s in normalized if (s.title or "").strip() or (s.snippet or "").strip()]
+        no_text = [s for s in normalized if not ((s.title or "").strip() or (s.snippet or "").strip())]
+        fallback = with_text + no_text
         return fallback[:max_results]
+
+
 
     return deduped[:max_results]

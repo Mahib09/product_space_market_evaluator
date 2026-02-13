@@ -39,7 +39,27 @@ _EXTRACTION_INSTRUCTIONS = (
 _MAX_COMPANIES = 10
 
 _FUNDING_KEYWORDS = re.compile(
-    r"raised|funding|seed|series\s*[abc]|led\s+by|round|backed\s+by|venture",
+    r"raised|funding|seed|series\s*[abc]|led\s+by|backed\s+by|round|"
+    r"investment|financing|venture",
+    re.IGNORECASE,
+)
+
+_HIGH_SIGNAL_DOMAINS = {
+    "techcrunch.com",
+    "crunchbase.com",
+    "prnewswire.com",
+    "businesswire.com",
+    "pitchbook.com",
+    "cbinsights.com",
+    "venturebeat.com",
+    "bloomberg.com",
+    "reuters.com",
+    "sifted.eu",
+    "eu-startups.com",
+}
+
+_FUNDING_URL_PATTERN = re.compile(
+    r"funding|series-[abc]|seed-round|raises|investment|venture|fundrais",
     re.IGNORECASE,
 )
 
@@ -47,6 +67,67 @@ _FUNDING_KEYWORDS = re.compile(
 def _has_funding_signal(src: Source) -> bool:
     """Return True if title or snippet mentions funding-related keywords."""
     return bool(_FUNDING_KEYWORDS.search(f"{src.title} {src.snippet}"))
+
+
+def _is_high_signal_domain(src: Source) -> bool:
+    """Return True if the source URL belongs to a high-signal domain."""
+    host = str(src.url).lower()
+    return any(domain in host for domain in _HIGH_SIGNAL_DOMAINS)
+
+
+def _has_funding_url(src: Source) -> bool:
+    """Return True if the URL path contains funding-related terms."""
+    return bool(_FUNDING_URL_PATTERN.search(str(src.url)))
+
+
+def _is_wikipedia(src: Source) -> bool:
+    return "wikipedia.org" in str(src.url).lower()
+
+
+def _tiered_filter(sources: list[Source]) -> tuple[list[Source], str]:
+    """Two-tier filtering: keyword match first, domain/URL fallback second.
+
+    Returns (filtered_sources, tier_used).
+    """
+    if not sources:
+        return [], "none"
+
+    empty_snippets = sum(1 for s in sources if len(s.snippet.strip()) == 0)
+    logger.info(
+        "[Agent2] Filter diagnostics: total=%d, empty_snippets=%d",
+        len(sources), empty_snippets,
+    )
+
+    # --- Tier A: funding keywords in title+snippet, no snippet length gate ---
+    tier_a: list[Source] = [
+        src for src in sources
+        if not _is_wikipedia(src) and _has_funding_signal(src)
+    ]
+    keyword_match_count = len(tier_a)
+    logger.info("[Agent2] Tier A (keyword match): %d", keyword_match_count)
+
+    if len(tier_a) >= 5:
+        logger.info("[Agent2] Using Tier A (%d sources)", len(tier_a))
+        return tier_a, "A"
+
+    # --- Tier B: high-signal domain OR funding URL pattern ---
+    tier_b_extra: list[Source] = [
+        src for src in sources
+        if not _is_wikipedia(src)
+        and src not in tier_a
+        and (_is_high_signal_domain(src) or _has_funding_url(src))
+    ]
+    logger.info("[Agent2] Tier B extras (domain/URL): %d", len(tier_b_extra))
+
+    combined = tier_a + tier_b_extra
+    if combined:
+        logger.info("[Agent2] Using Tier A+B (%d sources)", len(combined))
+        return combined, "A+B"
+
+    # --- Ultimate fallback: return all non-wikipedia sources ---
+    fallback = [src for src in sources if not _is_wikipedia(src)]
+    logger.info("[Agent2] Fallback: returning all non-wiki sources (%d)", len(fallback))
+    return fallback, "fallback"
 
 
 def _deduplicate_companies(companies: list) -> list:
@@ -125,14 +206,35 @@ async def run_agent2(
     errors.extend(errs3)
 
     merged = sources1 + sources2 + sources3
+    logger.info("[Agent2] Raw merged: %d", len(merged))
 
-    # --- 2. Clean + prioritise funding-relevant sources ---
+    # --- 2. Clean + two-tier funding filter ---
     t_clean = time.perf_counter()
     cleaned = clean_sources(merged, max_results=40)
-    funding_hits = [s for s in cleaned if _has_funding_signal(s)]
-    others = [s for s in cleaned if not _has_funding_signal(s)]
-    sources = (funding_hits + others)[:15]
-    logger.info("[Agent2] CLEAN_DONE in %.2fs (sources=%d)", time.perf_counter() - t_clean, len(sources))
+    logger.info("[Agent2] Cleaned: %d", len(cleaned))
+
+    filtered, tier_used = _tiered_filter(cleaned)
+    logger.info("[Agent2] Tiered filter (%s): %d", tier_used, len(filtered))
+
+    # --- 2b. Fallback search if too few sources ---
+    if len(filtered) < 5 and len(cleaned) > 0:
+        logger.info("[Agent2] Filtered < 5 — running fallback search")
+        fallback_query = (
+            f'{product_space} startup raised seed "Series A" "Series B"'
+            f' led by investors funding round'
+        )
+        t_fb = time.perf_counter()
+        fb_sources, fb_errs = await web_search(fallback_query, max_results=12)
+        logger.info("[Agent2] FALLBACK_DONE in %.2fs (raw=%d)", time.perf_counter() - t_fb, len(fb_sources))
+        errors.extend(fb_errs)
+
+        merged_fb = merged + fb_sources
+        cleaned_fb = clean_sources(merged_fb, max_results=40)
+        filtered, tier_used = _tiered_filter(cleaned_fb)
+        logger.info("[Agent2] Tiered filter after fallback (%s): %d", tier_used, len(filtered))
+
+    sources = filtered[:15]
+    logger.info("[Agent2] CLEAN_DONE in %.2fs (sources=%d, tier=%s)", time.perf_counter() - t_clean, len(sources), tier_used)
 
     # --- 3. Extract ---
     logger.info("[Agent2] Sending %d sources to extraction", len(sources))

@@ -1,17 +1,17 @@
 # Product Space Market Evaluator
 
-A FastAPI service that evaluates product space market opportunities through a multi-agent system. Given a product space (e.g., "AI sales automation"), it returns a structured JSON report covering incumbents, funded startups, market sizing, and a GO/NO_GO verdict — all grounded in web-sourced evidence.
+A FastAPI service that evaluates product space market opportunities through a multi-agent system. Given a product space (e.g., "AI sales automation"), it returns a structured JSON report covering incumbents, funded startups, market sizing, and a GO/NO_GO verdict, all grounded in web-sourced evidence.
 
 ## Overview
 
 The system orchestrates four specialized agents to produce a comprehensive market evaluation:
 
 - **Agent 1 (Incumbents):** Identifies 5–8 established players, their offerings, target customers, and differentiators.
-- **Agent 2 (Startups):** Finds Seed through Series B funded startups with investor details, amounts, and dates — only when supported by evidence.
+- **Agent 2 (Startups):** Finds Seed through Series B funded startups with investor details, amounts, and dates, only when supported by evidence.
 - **Agent 3 (Market Scan):** Extracts TAM, SAM, and 5-year CAGR from market research sources. Falls back to adjacent markets when direct data is unavailable.
-- **Agent 4 (Judgement):** Computes a 1–10 score and GO/NO_GO verdict using a deterministic scoring formula. No API calls — pure computation over the outputs of Agents 1–3.
+- **Agent 4 (Judgement):** Computes a 1–10 score and GO/NO_GO verdict using a deterministic scoring formula. No API calls pure computation over the outputs of Agents 1–3.
 
-Every extracted field is backed by cited web sources. If evidence doesn't exist, the field is `null` — the system does not guess or hallucinate values.
+Every extracted field is backed by cited web sources. If evidence doesn't exist, the field is `null` the system does not guess or hallucinate values.
 
 ## How to Run
 
@@ -23,7 +23,7 @@ Every extracted field is backed by cited web sources. If evidence doesn't exist,
 ### Setup
 
 ```bash
-git clone <repo-url>
+git clone "https://github.com/Mahib09/product_space_market_evaluator"
 cd product_space_market_evaluator
 
 python -m venv .venv
@@ -43,11 +43,11 @@ OPENAI_API_KEY=sk-your-key-here
 
 Optional overrides:
 
-| Variable | Default | Description |
-|---|---|---|
-| `OPENAI_MODEL_SEARCH` | `gpt-4.1` | Model used for web search |
-| `OPENAI_MODEL_EXTRACT` | `gpt-5` | Model used for structured extraction |
-| `DEBUG_WEB_SEARCH_SHAPE` | `false` | Log raw web search source object shape (once per process) |
+| Variable                 | Default   | Description                                               |
+| ------------------------ | --------- | --------------------------------------------------------- |
+| `OPENAI_MODEL_SEARCH`    | `gpt-4.1` | Model used for web search                                 |
+| `OPENAI_MODEL_EXTRACT`   | `gpt-5`   | Model used for structured extraction                      |
+| `DEBUG_WEB_SEARCH_SHAPE` | `false`   | Log raw web search source object shape (once per process) |
 
 ### Run the Server
 
@@ -184,13 +184,13 @@ Weighted combination of market growth rate and market size:
 growth = 0.6 * cagr_points + 0.4 * tam_points
 ```
 
-| CAGR | Points | | TAM | Points |
-|---|---|---|---|---|
-| < 5% | 2 | | < $1B | 2 |
-| 5–10% | 4 | | $1–5B | 4 |
-| 10–20% | 7 | | $5–20B | 7 |
-| >= 20% | 9 | | >= $20B | 9 |
-| Unknown | 2 | | Unknown | 2 |
+| CAGR    | Points |     | TAM     | Points |
+| ------- | ------ | --- | ------- | ------ |
+| < 5%    | 2      |     | < $1B   | 2      |
+| 5–10%   | 4      |     | $1–5B   | 4      |
+| 10–20%  | 7      |     | $5–20B  | 7      |
+| >= 20%  | 9      |     | >= $20B | 9      |
+| Unknown | 2      |     | Unknown | 2      |
 
 ### Competition Score (0–10)
 
@@ -214,10 +214,10 @@ score = clamp(5 + white_space_raw / 2, 1, 10)
 
 ### Verdict
 
-| Score | Verdict |
-|---|---|
-| >= 6 | **GO** |
-| < 6 | **NO_GO** |
+| Score | Verdict   |
+| ----- | --------- |
+| >= 6  | **GO**    |
+| < 6   | **NO_GO** |
 
 ### Edge Cases
 
@@ -245,6 +245,46 @@ Inherited from Agent 3's market scan assessment:
 **Graceful degradation.** Each agent is wrapped in an exception handler with a fallback return value. A single agent failure produces an error entry in the response but does not crash the pipeline. The final result always has a valid structure.
 
 **Strict JSON schema extraction.** Pydantic schemas are transformed to OpenAI strict mode, with validation retries that feed error messages back to the model for self-correction (up to 3 attempts).
+
+## ⏱ Runtime Expectations
+
+**Typical runtime:** ~180,000–240,000 ms (≈3–4 minutes) per product space query.
+
+This runtime is expected and primarily driven by the following stages:
+
+### 1. Concurrent Web Search
+
+- Executes 3 parallel search queries
+- Fetches up to 12 results per query
+- Network latency dominates this phase
+
+### 2. Source Cleaning & Tiered Filtering
+
+- Deduplicates sources
+- Detects funding signal keywords
+- Prioritizes high-signal funding domains
+- Caps sources to control extraction latency
+
+### 3. Structured Extraction (LLM-Based)
+
+- Bounded with a 180s timeout
+- Limited to 1 retry
+- Hard cap of 6 sources per extraction
+- Strict schema validation (no inferred data allowed)
+
+---
+
+### Why It’s Not Instant
+
+The system is optimized for:
+
+- Accuracy over speed
+- Verified funding evidence
+- Schema-validated structured output
+- Guardrails against hallucination
+
+The current configuration prioritizes reliability and structured correctness.  
+Runtime can be reduced further by lowering source caps or timeout limits, at the cost of recall and extraction robustness.
 
 ## Limitations
 

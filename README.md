@@ -331,10 +331,6 @@ Set `DEBUG_WEB_SEARCH_SHAPE=true` to dump the raw OpenAI web search source objec
 [DEBUG_SHAPE] __dict__={'url': '...', 'title': '...', 'snippet': '...'}
 ```
 
-### Cache behavior
-
-Cache hits are logged at `DEBUG` level. Use `clear_search_cache()` between runs if needed.
-
 ## Future Improvements
 
 - **Persistent cache.** Replace the in-memory dict with Redis or SQLite to survive restarts and share across workers.

@@ -6,6 +6,7 @@ import re
 import time
 import uuid
 from collections import Counter
+from urllib.parse import urlparse
 
 from app.core.search import web_search
 from app.core.clean import clean_sources
@@ -40,9 +41,9 @@ _EXTRACTION_INSTRUCTIONS = (
 _MAX_COMPANIES = 10
 
 # ✅ simple guardrails
-_SOURCES_CAP = 6
-_EXTRACT_TIMEOUT_S = 180
+_SOURCES_CAP = 10
 _EXTRACT_RETRIES = 1
+_EXTRACT_TIMEOUT_S = 240
 
 _FUNDING_KEYWORDS = re.compile(
     r"raised|funding|seed|series\s*[abc]|led\s+by|backed\s+by|round|"
@@ -75,8 +76,8 @@ def _has_funding_signal(src: Source) -> bool:
 
 
 def _is_high_signal_domain(src: Source) -> bool:
-    host = str(src.url).lower()
-    return any(domain in host for domain in _HIGH_SIGNAL_DOMAINS)
+    host = urlparse(str(src.url)).netloc.lower()
+    return any(host == d or host.endswith("." + d) for d in _HIGH_SIGNAL_DOMAINS)
 
 
 def _has_funding_url(src: Source) -> bool:
@@ -95,7 +96,12 @@ def _tiered_filter(sources: list[Source], request_id: str) -> tuple[list[Source]
         src for src in sources
         if not _is_wikipedia(src) and _has_funding_signal(src)
     ]
-    logger.info("[Agent2] TIER_A request_id=%s keyword_match=%d", request_id, len(tier_a))
+    tier_a_urls = {str(s.url) for s in tier_a}
+
+    logger.info(
+        "[Agent2] TIER_A request_id=%s keyword_match=%d",
+        request_id, len(tier_a)
+    )
 
     if len(tier_a) >= 5:
         return tier_a, "A"
@@ -103,15 +109,17 @@ def _tiered_filter(sources: list[Source], request_id: str) -> tuple[list[Source]
     tier_b_extra: list[Source] = [
         src for src in sources
         if not _is_wikipedia(src)
-        and src not in tier_a
+        and str(src.url) not in tier_a_urls
         and (_is_high_signal_domain(src) or _has_funding_url(src))
     ]
+
     combined = tier_a + tier_b_extra
     if combined:
         return combined, "A+B"
 
     fallback = [src for src in sources if not _is_wikipedia(src)]
     return fallback, "fallback"
+
 
 
 def _deduplicate_companies(companies: list) -> list:
@@ -152,9 +160,9 @@ async def run_agent2(product_space: str) -> tuple[Startups, list[ErrorItem]]:
         _timed_search("QUERY2_DONE", query2),
         _timed_search("QUERY3_DONE", query3),
     )
-    errors.extend(errs1)
-    errors.extend(errs2)
-    errors.extend(errs3)
+    errors.extend(errs1 or [])
+    errors.extend(errs2 or [])
+    errors.extend(errs3 or [])
 
     merged = sources1 + sources2 + sources3
     cleaned = clean_sources(merged, max_results=40)
@@ -182,7 +190,7 @@ async def run_agent2(product_space: str) -> tuple[Startups, list[ErrorItem]]:
 
     # --- 2. Extract (bounded) ---
     instructions = _EXTRACTION_INSTRUCTIONS.replace("{product_space}", product_space)
-    logger.info("[Agent2] EXTRACT_START request_id=%s timeout=%ds", request_id, _EXTRACT_TIMEOUT_S)
+    logger.info("[Agent2] EXTRACT_START request_id=%s timeout=%ds", request_id)
 
     t_extract = time.perf_counter()
     try:
@@ -195,10 +203,11 @@ async def run_agent2(product_space: str) -> tuple[Startups, list[ErrorItem]]:
                 instructions=instructions,
                 max_retries=_EXTRACT_RETRIES,  # ✅ fewer retries
             ),
-            timeout=_EXTRACT_TIMEOUT_S,  # ✅ cannot hang forever
+            timeout=_EXTRACT_TIMEOUT_S,
         )
     except asyncio.TimeoutError:
         logger.warning("[Agent2] EXTRACT_TIMEOUT request_id=%s after %.2fs", request_id, time.perf_counter() - t_extract)
+        errors.append(ErrorItem(agent=_AGENT, message="Extract_Timeout"))
         return Startups(companies=[], sources=sources, startup_count=0), errors
 
     errors.extend(extract_errors)

@@ -41,15 +41,32 @@ _BLOCKED_DOMAINS = {
 
 
 def _is_blocked_domain(url: str) -> bool:
-    """Return True if the URL belongs to a low-signal domain."""
+    """Return True if the URL belongs to a low-signal or encyclopedia domain."""
     try:
-        host = urlparse(str(url)).netloc.lower()
-        # Strip www. prefix for matching
+        parsed = urlparse(str(url))
+        host = parsed.netloc.lower()
+        path = parsed.path.lower()
+
         if host.startswith("www."):
             host = host[4:]
-        return host in _BLOCKED_DOMAINS
+
+        # Block exact domains
+        if host in _BLOCKED_DOMAINS:
+            return True
+
+        # Block subdomains like en.wikipedia.org
+        if host.endswith("wikipedia.org") or host.endswith("wikimedia.org") or host.endswith("wikidata.org"):
+            return True
+
+        # Extra safety: block /wiki/ style encyclopedia pages
+        if path.startswith("/wiki/"):
+            return True
+
+        return False
+
     except Exception:
         return False
+
 
 
 def _is_valid_url(url: str) -> bool:

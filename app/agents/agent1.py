@@ -48,7 +48,7 @@ async def run_agent1(
     query = f"{product_space} top vendors competitors market leaders enterprise"
 
     search_start = time.perf_counter()
-    sources, search_errors = await web_search(query, max_results=10)
+    sources, search_errors = await web_search(query, max_results=20)
     search_s = time.perf_counter() - search_start
 
     errors.extend(search_errors)

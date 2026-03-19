@@ -167,7 +167,7 @@ class MarketScanAgent:
                     sources=sources,
                     instructions=instructions,
                 )
-                errors.extend(extract_errors2)
+                errors.extend(extract_errors2 or [])
 
                 if report2 is not None:
                     report = report2

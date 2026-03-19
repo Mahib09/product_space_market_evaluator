@@ -7,6 +7,7 @@ from openai import AsyncOpenAI
 from pydantic import ValidationError
 
 from app.config import OPENAI_MODEL_SEARCH, OPENAI_API_KEY
+from app.core.cache import get_cached, set_cached
 from app.schemas import ErrorItem, Source
 
 logger = logging.getLogger(__name__)
@@ -19,15 +20,6 @@ _DEBUG_SHAPE = os.environ.get("DEBUG_WEB_SEARCH_SHAPE", "").lower() in (
     "1", "true", "yes",
 )
 _shape_logged = False  # only dump once per process
-
-# In-memory cache: query → (sources, errors)
-# Avoids re-searching the same query within a pipeline run.
-_cache: dict[str, tuple[list[Source], list[ErrorItem]]] = {}
-
-
-def clear_search_cache() -> None:
-    """Clear the search cache (call between pipeline runs if needed)."""
-    _cache.clear()
 
 
 def _resolve_path(obj, path: str):
@@ -130,10 +122,10 @@ async def web_search(
 
     # Check cache first
     cache_key = f"{query.strip().lower()}|{max_results}"
-    if cache_key in _cache:
+    cached = await get_cached(cache_key)
+    if cached is not None:
         logger.debug("Cache hit for query: %s", query[:60])
-        cached_sources, cached_errors = _cache[cache_key]
-        return list(cached_sources), list(cached_errors)
+        return list(cached), []
 
     errors: list[ErrorItem] = []
 
@@ -148,9 +140,8 @@ async def web_search(
 
             sources = _extract_sources_from_response(response)
             cached_sources = sources[:max_results]
-            cached_errors = list(errors)
-            _cache[cache_key] = (cached_sources, cached_errors)
-            return list(cached_sources), list(cached_errors)
+            await set_cached(cache_key, cached_sources)
+            return list(cached_sources), list(errors)
 
         except Exception as exc:
             logger.error(

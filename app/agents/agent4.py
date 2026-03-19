@@ -162,9 +162,7 @@ class JudgementAgent:
             parts.append("Competitive density or weak growth limits opportunity")
 
         summary = ". ".join(parts) + "."
-        logger.info(
-        "[Agent4] SCORE_DONE",
-    )
+        logger.info("[Agent4] SCORE_DONE")
 
         return Judgement(
             verdict=verdict,

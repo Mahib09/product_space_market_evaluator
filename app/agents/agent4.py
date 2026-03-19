@@ -178,15 +178,3 @@ class JudgementAgent:
             confidence=confidence,
         )
 
-
-def run_agent4(
-    incumbents: IncumbentsReport,
-    startups: Startups,
-    market: MarketScan,
-) -> Judgement:
-    """Compute a 1-10 score and GO/NO_GO verdict. Pure computation, no API calls.
-
-    Deprecated: Use JudgementAgent().run() instead. Kept for backward compatibility.
-    """
-    agent = JudgementAgent()
-    return agent.run(incumbents, startups, market)

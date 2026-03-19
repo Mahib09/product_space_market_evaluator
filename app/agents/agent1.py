@@ -3,6 +3,7 @@ from __future__ import annotations
 import logging
 import time
 import uuid
+from collections.abc import Callable, Awaitable
 
 from app.core.search import web_search
 from app.core.clean import clean_sources
@@ -12,6 +13,7 @@ from app.schemas import ErrorItem, IncumbentsReport, Source
 logger = logging.getLogger(__name__)
 
 _AGENT = "agent1"
+_MAX_PLAYERS = 8
 
 _EXTRACTION_INSTRUCTIONS = (
     "1. Identify established enterprise players relevant to the product space.\n"
@@ -23,91 +25,62 @@ _EXTRACTION_INSTRUCTIONS = (
     "   - differentiators (null if not supported by evidence)\n"
     "   - sources (list of evidence used for this player)\n"
     "4. Only use evidence provided below.\n"
-    "5. If a field isn’t supported, set it null/empty but only include a player if you have evidence for the player existing in this product space. "
+    "5. If a field isn't supported, set it null/empty but only include a player if you have evidence for the player existing in this product space. "
     "Do not guess.\n"
 )
 
-_MAX_PLAYERS = 8
 
+class IncumbentsAgent:
+    def __init__(
+        self,
+        search_fn: Callable[..., Awaitable[tuple[list[Source], list[ErrorItem]]]] = web_search,
+        extract_fn: Callable[..., Awaitable[tuple[IncumbentsReport | None, list[ErrorItem]]]] = extract_structured,
+        clean_fn: Callable[[list[Source], int], list[Source]] = clean_sources,
+    ) -> None:
+        self._search = search_fn
+        self._extract = extract_fn
+        self._clean = clean_fn
 
-async def run_agent1(
-    product_space: str,
-) -> tuple[IncumbentsReport, list[ErrorItem]]:
-    """Identify established enterprise incumbents for the given product space.
+    async def run(self, product_space: str) -> tuple[IncumbentsReport, list[ErrorItem]]:
+        """Identify established enterprise incumbents. Always returns a valid report."""
+        request_id = uuid.uuid4().hex[:12]
+        total_start = time.perf_counter()
+        errors: list[ErrorItem] = []
 
-    Always returns a valid IncumbentsReport, even on failure (with empty players).
-    """
-    request_id = uuid.uuid4().hex[:12]
-    total_start = time.perf_counter()
+        logger.info('[Agent1] START request_id=%s product_space="%s"', request_id, product_space)
 
-    errors: list[ErrorItem] = []
-    logger.info('[Agent1] START request_id=%s product_space="%s"', request_id, product_space)
+        # 1. Search
+        query = f"{product_space} top vendors competitors market leaders enterprise"
+        sources, search_errors = await self._search(query, max_results=20)
+        errors.extend(search_errors)
+        logger.info("[Agent1] SEARCH_DONE request_id=%s raw=%s", request_id, len(sources))
 
-    # --- 1. Search ---
-    logger.info("[Agent1] SEARCH_START request_id=%s", request_id)
-    query = f"{product_space} top vendors competitors market leaders enterprise"
+        # 2. Clean
+        sources = self._clean(sources, 12)
+        logger.info("[Agent1] CLEAN_DONE request_id=%s sources=%s", request_id, len(sources))
 
-    search_start = time.perf_counter()
-    sources, search_errors = await web_search(query, max_results=20)
-    search_s = time.perf_counter() - search_start
+        # 3. Extract
+        report, extract_errors = await self._extract(
+            agent=_AGENT,
+            schema_model=IncumbentsReport,
+            product_space=product_space,
+            sources=sources,
+            instructions=_EXTRACTION_INSTRUCTIONS,
+        )
+        errors.extend(extract_errors)
 
-    errors.extend(search_errors)
-    raw_count = len(sources) if sources else 0
-    logger.info("[Agent1] SEARCH_DONE request_id=%s in %.2fs raw=%s", request_id, search_s, raw_count)
+        # 4. Handle failure
+        if report is None:
+            if not any(e.agent == _AGENT for e in errors):
+                errors.append(ErrorItem(agent=_AGENT, message="No incumbents extracted"))
+            logger.info("[Agent1] TOTAL request_id=%s status=fallback", request_id)
+            return IncumbentsReport(players=[], sources=sources), errors
 
-    # --- 2. Clean ---
-    clean_start = time.perf_counter()
-    sources = clean_sources(sources, max_results=12)
-    clean_s = time.perf_counter() - clean_start
-
-    cleaned_count = len(sources) if sources else 0
-    logger.info("[Agent1] CLEAN_DONE request_id=%s in %.2fs sources=%s", request_id, clean_s, cleaned_count)
-
-    # keep your existing debug lines, just add request_id
-    logger.info("[Agent1] Cleaned sources request_id=%s count=%d", request_id, len(sources))
-    for s in sources[:3]:
-        logger.info("[Agent1] SOURCE request_id=%s title=%s url=%s", request_id, s.title[:60], s.url)
-
-    # --- 3. Extract ---
-    sent_count = len(sources)
-    logger.info("[Agent1] EXTRACT_START request_id=%s sources=%s", request_id, sent_count)
-
-    extract_start = time.perf_counter()
-    report, extract_errors = await extract_structured(
-        agent=_AGENT,
-        schema_model=IncumbentsReport,
-        product_space=product_space,
-        sources=sources,
-        instructions=_EXTRACTION_INSTRUCTIONS,
-    )
-    extract_s = time.perf_counter() - extract_start
-
-    errors.extend(extract_errors)
-
-    players_count = len(report.players) if report and report.players else 0
-    logger.info("[Agent1] EXTRACT_DONE request_id=%s in %.2fs players=%s", request_id, extract_s, players_count)
-
-    # --- 4. Handle extraction failure ---
-    if report is None:
-        if not any(e.agent == _AGENT for e in errors):
-            errors.append(ErrorItem(agent=_AGENT, message="No incumbents extracted"))
-
-        total_s = time.perf_counter() - total_start
-        logger.info("[Agent1] TOTAL request_id=%s in %.2fs status=fallback errors=%s", request_id, total_s, len(errors))
-        return IncumbentsReport(players=[], sources=sources), errors
-
-    # --- 5. Post-process ---
-    report.players = report.players[:_MAX_PLAYERS]
-    report.sources = sources
-
-    total_s = time.perf_counter() - total_start
-    logger.info(
-        "[Agent1] TOTAL request_id=%s in %.2fs players=%s sources=%s errors=%s",
-        request_id,
-        total_s,
-        len(report.players),
-        len(report.sources),
-        len(errors),
-    )
-
-    return report, errors
+        # 5. Post-process
+        report.players = report.players[:_MAX_PLAYERS]
+        report.sources = sources
+        logger.info(
+            "[Agent1] TOTAL request_id=%s in %.2fs players=%s",
+            request_id, time.perf_counter() - total_start, len(report.players),
+        )
+        return report, errors

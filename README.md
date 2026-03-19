@@ -1,29 +1,83 @@
 # Product Space Market Evaluator
 
-A FastAPI service that evaluates product space market opportunities through a multi-agent system. Given a product space (e.g., "AI sales automation"), it returns a structured JSON report covering incumbents, funded startups, market sizing, and a GO/NO_GO verdict, all grounded in web-sourced evidence.
+[![CI](https://github.com/Mahib09/product_space_market_evaluator/actions/workflows/ci.yml/badge.svg)](https://github.com/Mahib09/product_space_market_evaluator/actions/workflows/ci.yml)
+![Python](https://img.shields.io/badge/python-3.11%2B-blue)
+![License](https://img.shields.io/badge/license-MIT-green)
 
-## Overview
+A FastAPI service that evaluates product-space market opportunities through a **multi-agent AI pipeline**. Given a product space (e.g., "AI sales automation"), it returns a structured JSON report covering incumbents, funded startups, market sizing, and a GO/NO_GO verdict — all grounded in web-sourced evidence.
 
-The system orchestrates four specialized agents to produce a comprehensive market evaluation:
+## Quick demo (no API key needed)
 
-- **Agent 1 (Incumbents):** Identifies 5–8 established players, their offerings, target customers, and differentiators.
-- **Agent 2 (Startups):** Finds Seed through Series B funded startups with investor details, amounts, and dates, only when supported by evidence.
-- **Agent 3 (Market Scan):** Extracts TAM, SAM, and 5-year CAGR from market research sources. Falls back to adjacent markets when direct data is unavailable.
-- **Agent 4 (Judgement):** Computes a 1–10 score and GO/NO_GO verdict using a deterministic scoring formula. No API calls pure computation over the outputs of Agents 1–3.
+```bash
+# Clone and install
+git clone https://github.com/Mahib09/product_space_market_evaluator
+cd product_space_market_evaluator
+pip install -r requirements.txt -r requirements-dev.txt
 
-Every extracted field is backed by cited web sources. If evidence doesn't exist, the field is `null` the system does not guess or hallucinate values.
+# Rich terminal demo using pre-built sample outputs
+python demos/demo.py "AI sales automation" --cached
+python demos/demo.py "vertical SaaS for restaurants" --cached
+python demos/demo.py "developer observability tools" --cached
+```
 
-## How to Run
+Sample output:
+
+```
++------- Market Evaluation -------+
+|                                 |
+|    AI sales automation          |
+|                                 |
+|    Verdict:   GO                |
+|    ############-------- 6/10    |
+|                                 |
++---------------------------------+
+```
+
+See [demos/](demos/) for the full CLI, sample outputs, and a Jupyter notebook walkthrough.
+
+## Architecture
+
+```
+POST /evaluate
+       │
+       ▼
+  run_pipeline()
+       │
+       ├─── Agent 1 (IncumbentsAgent)  ─┐
+       ├─── Agent 2 (StartupsAgent)    ─┼─ asyncio.gather  (concurrent)
+       └─── Agent 3 (MarketScanAgent)  ─┘
+                                        │
+              Each agent:  web_search → clean_sources → extract_structured
+                                        │
+                                        ▼
+                              Agent 4 (JudgementAgent)
+                              pure deterministic maths — no API calls
+                                        │
+                                        ▼
+                                  FinalResult (JSON)
+                                        │
+                                        ▼
+                           SQLite persistence (evaluations.db)
+```
+
+- **Agent 1** — Identifies 5–8 established incumbents: offerings, target customers, differentiators.
+- **Agent 2** — Finds Seed–Series B startups with investor details and funding amounts, backed by evidence only.
+- **Agent 3** — Extracts TAM, SAM, and 5-year CAGR from market research sources.
+- **Agent 4** — Scores 1–10 and returns GO/NO_GO using a transparent formula. Zero API calls.
+
+Every extracted field is backed by cited sources. If evidence doesn't exist, the field is `null` — the system does not guess.
+
+## Setup
 
 ### Prerequisites
 
 - Python 3.11+
 - An OpenAI API key with access to `gpt-4.1` (search) and `gpt-5` (extraction)
 
-### Setup
+### Install
 
 ```bash
-git clone "https://github.com/Mahib09/product_space_market_evaluator"
+git clone https://github.com/Mahib09/product_space_market_evaluator
 cd product_space_market_evaluator
 
 python -m venv .venv
@@ -33,31 +87,48 @@ python -m venv .venv
 pip install -r requirements.txt
 ```
 
-### Environment Variables
+### Environment
 
-Create a `.env` file in the project root:
-
+```bash
+cp .env.example .env
+# Edit .env and add your OPENAI_API_KEY
 ```
-OPENAI_API_KEY=sk-your-key-here
-```
 
-Optional overrides:
+| Variable | Default | Description |
+|---|---|---|
+| `OPENAI_API_KEY` | — | **Required.** OpenAI API key |
+| `OPENAI_MODEL_SEARCH` | `gpt-4.1` | Model used for web search |
+| `OPENAI_MODEL_EXTRACT` | `gpt-5` | Model used for structured extraction |
+| `DEBUG_WEB_SEARCH_SHAPE` | `false` | Log raw web search source shape once per process |
 
-| Variable                 | Default   | Description                                               |
-| ------------------------ | --------- | --------------------------------------------------------- |
-| `OPENAI_MODEL_SEARCH`    | `gpt-4.1` | Model used for web search                                 |
-| `OPENAI_MODEL_EXTRACT`   | `gpt-5`   | Model used for structured extraction                      |
-| `DEBUG_WEB_SEARCH_SHAPE` | `false`   | Log raw web search source object shape (once per process) |
-
-### Run the Server
+### Run the server
 
 ```bash
 uvicorn app.main:app --reload
 ```
 
-The API is available at `http://127.0.0.1:8000`.
+### Docker (one command)
 
-### Example Request
+```bash
+cp .env.example .env   # add your API key
+docker compose up --build
+```
+
+The API is available at `http://localhost:8000`. SQLite databases are stored in named Docker volumes and persist across restarts.
+
+## API
+
+### `POST /evaluate`
+
+**Request:**
+
+```json
+{ "product_space": "AI sales automation" }
+```
+
+**Response:** [`FinalResult`](#data-models) — see below.
+
+**Example:**
 
 ```bash
 curl -X POST http://127.0.0.1:8000/evaluate \
@@ -65,11 +136,11 @@ curl -X POST http://127.0.0.1:8000/evaluate \
   -d '{"product_space": "AI sales automation"}'
 ```
 
-## Example Response
+### Example response
 
 ```json
 {
-  "request_id": "a3f1b2c4d5e6",
+  "request_id": "3a7f1b9c2e4d",
   "product_space": "AI sales automation",
   "incumbents": {
     "players": [
@@ -81,262 +152,186 @@ curl -X POST http://127.0.0.1:8000/evaluate \
         "sources": [{"url": "https://...", "title": "...", "snippet": "..."}]
       }
     ],
-    "sources": [...]
+    "sources": []
   },
   "startups": {
     "companies": [
       {
-        "name": "Rox",
+        "name": "AiSDR",
         "stage": "Series A",
-        "amount_usd": 50000000,
-        "date": "2024-11-19",
-        "lead_investors": ["Sequoia Capital"],
-        "sources": [...]
+        "amount_usd": 15000000,
+        "date": "2024-09-01",
+        "lead_investors": ["Andreessen Horowitz"],
+        "sources": []
       }
     ],
-    "total_capital_usd": 125000000,
-    "startup_count": 4,
-    "top_investors": ["Sequoia Capital", "Andreessen Horowitz"],
-    "velocity_note": "Moderate",
-    "sources": [...]
+    "total_capital_usd": 117000000,
+    "startup_count": 5,
+    "top_investors": ["Andreessen Horowitz", "Benchmark"],
+    "velocity_note": "",
+    "sources": []
   },
   "market_scan": {
-    "tam_usd": 5400000000,
-    "tam_year": 2025,
-    "sam_usd": null,
-    "sam_year": null,
-    "cagr_5y_percent": 14.2,
+    "tam_usd": 6800000000,
+    "tam_year": 2024,
+    "sam_usd": 1700000000,
+    "sam_year": 2024,
+    "cagr_5y_percent": 21.3,
     "confidence": "medium",
     "notes": "",
-    "sources": [...]
+    "sources": []
   },
   "judgement": {
     "verdict": "GO",
     "score": 6,
     "breakdown": {
-      "growth_score": 7,
-      "competition_score": 5,
-      "white_space": 6
+      "growth_score": 8,
+      "competition_score": 8,
+      "white_space": 5
     },
-    "summary": "5 incumbents identified. 4 startups ($125M known funding). TAM ~$5.4B. CAGR ~14.2%. Market opportunity supports entry.",
+    "summary": "6 incumbents identified. 5 startups ($117M known funding). TAM ~$6.8B. CAGR ~21.3%. Market opportunity supports entry.",
     "confidence": "medium"
   },
   "errors": []
 }
 ```
 
-## Architecture
+Pre-built sample outputs for three product spaces live in [`demos/sample_outputs/`](demos/sample_outputs/).
+
+## Scoring formula
+
+Agent 4 runs no API calls — pure deterministic maths over the outputs of Agents 1–3.
 
 ```
-                          POST /evaluate
-                               |
-                               v
-                        +-------------+
-                        |   FastAPI    |
-                        +------+------+
-                               |
-                               v
-                       +---------------+
-                       | Orchestrator  |
-                       | run_pipeline  |
-                       +---+---+---+---+
-                           |   |   |
-              asyncio.gather (concurrent)
-                           |   |   |
-                  +--------+   |   +--------+
-                  v            v            v
-             +--------+  +--------+  +--------+
-             | Agent1 |  | Agent2 |  | Agent3 |
-             | Incumb.|  | Start. |  | Market |
-             +---+----+  +---+----+  +---+----+
-                 |            |            |
-                 v            v            v
-            web_search   web_search   web_search
-            (OpenAI)     (3 queries   (5 queries
-                          concurrent)  sequential)
-                 |            |            |
-                 v            v            v
-            clean_sources clean_sources clean_sources
-                 |            |            |
-                 v            v            v
-          extract_structured (OpenAI gpt-5, strict JSON)
-                 |            |            |
-                 +--------+   |   +--------+
-                          v   v   v
-                       +---------------+
-                       |    Agent4     |
-                       |  (sync score) |
-                       +-------+-------+
-                               |
-                               v
-                         FinalResult
+growth      = 0.6 × cagr_pts + 0.4 × tam_pts
+competition = 0.4 × inc_pts  + 0.4 × startup_pts + 0.2 × capital_pts
+score       = clamp(5 + (growth − competition) / 2, 1, 10)
+verdict     = GO if score >= 6
 ```
 
-## Scoring Explanation
+| CAGR | Points | | TAM | Points |
+|---|---|---|---|---|
+| < 5% | 2 | | < $1B | 2 |
+| 5–10% | 4 | | $1–5B | 4 |
+| 10–20% | 7 | | $5–20B | 7 |
+| >= 20% | 9 | | >= $20B | 9 |
+| Unknown | 2 | | Unknown | 2 |
 
-Agent 4 computes the final verdict using a deterministic formula with no API calls.
+**Edge cases:**
+- Score capped at **5** when confidence=LOW and both TAM and CAGR are null.
+- Score capped at **6** when 0 incumbents and 0 startups (unless both TAM and CAGR are available).
 
-### Growth Score (0–10)
+## Testing
 
-Weighted combination of market growth rate and market size:
-
-```
-growth = 0.6 * cagr_points + 0.4 * tam_points
-```
-
-| CAGR    | Points |     | TAM     | Points |
-| ------- | ------ | --- | ------- | ------ |
-| < 5%    | 2      |     | < $1B   | 2      |
-| 5–10%   | 4      |     | $1–5B   | 4      |
-| 10–20%  | 7      |     | $5–20B  | 7      |
-| >= 20%  | 9      |     | >= $20B | 9      |
-| Unknown | 2      |     | Unknown | 2      |
-
-### Competition Score (0–10)
-
-Weighted combination of incumbent density, startup activity, and capital deployed:
-
-```
-competition = 0.4 * incumbent_points + 0.4 * startup_points + 0.2 * capital_points
+```bash
+pip install -r requirements-dev.txt
+pytest tests/unit/ -v --cov=app --cov-report=term-missing
 ```
 
-Higher scores indicate more competitive markets.
-
-### White Space and Final Score
+35 unit tests, no API key required. Tests use dependency injection to mock all external calls.
 
 ```
-white_space_raw = growth - competition
-score = clamp(5 + white_space_raw / 2, 1, 10)
+tests/unit/
+├── test_agent1.py        # IncumbentsAgent — 4 tests
+├── test_agent2.py        # StartupsAgent — 4 tests
+├── test_agent3.py        # MarketScanAgent — 3 tests
+├── test_agent4.py        # JudgementAgent scoring — 10 tests
+├── test_cache.py         # SQLite search cache — 2 tests
+├── test_clean.py         # Source cleaning pipeline — 5 tests
+├── test_orchestrator.py  # Pipeline integration — 4 tests
+└── test_persistence.py   # SQLite result store — 3 tests
 ```
 
-- A high-growth, low-competition market scores above 5.
-- A low-growth, high-competition market scores below 5.
+GitHub Actions runs the full unit suite on every push to `main` and `feat/*`.
 
-### Verdict
+## Demos
 
-| Score | Verdict   |
-| ----- | --------- |
-| >= 6  | **GO**    |
-| < 6   | **NO_GO** |
+```bash
+# Rich terminal demo (live)
+python demos/demo.py "AI sales automation"
 
-### Edge Cases
+# Rich terminal demo (offline, using sample_outputs/)
+python demos/demo.py "AI sales automation" --cached
 
-- **Insufficient market data** (LOW confidence, no TAM, no CAGR): score capped at 5.
-- **Missing competition data** (0 incumbents, 0 startups): score capped at 6 unless both TAM and CAGR are available.
+# Jupyter notebook walkthrough
+cd demos && jupyter notebook notebook.ipynb
 
-### Confidence
+# Regenerate sample outputs (requires real API key)
+python demos/generate_samples.py
+```
 
-Inherited from Agent 3's market scan assessment:
+## Data models
 
-- **HIGH:** TAM and CAGR both supported by 2+ independent sources.
-- **MEDIUM:** One source or partial data (e.g., TAM present but CAGR missing).
-- **LOW:** Most values missing or derived from vague references.
+All Pydantic schemas live in [`app/schemas.py`](app/schemas.py). Top-level response is `FinalResult`:
 
-## Design Decisions
+| Field | Type | Description |
+|---|---|---|
+| `request_id` | `str` | Unique 12-char hex ID per request |
+| `product_space` | `str` | Echo of input |
+| `incumbents` | `IncumbentsReport` | Players, offerings, differentiators |
+| `startups` | `Startups` | Funded companies, capital, investors |
+| `market_scan` | `MarketScan` | TAM, SAM, CAGR, confidence |
+| `judgement` | `Judgement` | Verdict, score 1–10, breakdown |
+| `errors` | `list[ErrorItem]` | Per-agent errors; never crashes pipeline |
 
-**Async multi-agent architecture.** Agents 1–3 run concurrently via `asyncio.gather`. Each agent performs independent web searches and extraction, so concurrent execution cuts wall-clock time roughly to that of the slowest agent rather than the sum of all three.
+## Project structure
 
-**Evidence-only extraction.** The extraction prompt explicitly instructs the LLM to use only the provided source snippets. Fields without supporting evidence are set to `null`, not guessed. This trades recall for precision — a deliberate choice for a market evaluation tool where false data is worse than missing data.
+```
+app/
+├── agents/
+│   ├── agent1.py          # IncumbentsAgent class
+│   ├── agent2.py          # StartupsAgent class (tiered source filtering)
+│   ├── agent3.py          # MarketScanAgent class (follow-up search)
+│   └── agent4.py          # JudgementAgent — pure scoring, no I/O
+├── core/
+│   ├── cache.py           # SQLite search cache (aiosqlite)
+│   ├── clean.py           # Source dedup, domain blocklist, quality filter
+│   ├── extract.py         # LLM structured extraction with Pydantic retry
+│   ├── orchestrator.py    # run_pipeline() — concurrency + error handling
+│   ├── persistence.py     # SQLite result store (aiosqlite)
+│   └── search.py          # OpenAI web_search tool wrapper
+├── main.py                # FastAPI app — single POST /evaluate endpoint
+├── schemas.py             # All Pydantic models
+└── config.py              # Env var loading
 
-**Two-tier source filtering (Agent 2).** Web search often returns sources with empty or short snippets. Rather than dropping them, Agent 2 uses tiered filtering: Tier A selects sources with funding keywords in title or snippet; Tier B (fallback) includes sources from high-signal domains (TechCrunch, Crunchbase, PitchBook, etc.) or URLs with funding-related paths. This prevents the extraction step from receiving zero sources.
+demos/
+├── demo.py                # Rich CLI demo
+├── generate_samples.py    # Regenerate sample outputs via live pipeline
+├── notebook.ipynb         # Jupyter walkthrough
+└── sample_outputs/        # Pre-built JSON results (3 product spaces)
 
-**Deterministic scoring (Agent 4).** The judgement agent uses no LLM calls. Scoring is a pure function of structured data from the other agents, making it reproducible, fast, and auditable.
+tests/
+├── unit/                  # 35 tests, no API key required
+└── integration/           # 1 test, skipped without real API key
 
-**Graceful degradation.** Each agent is wrapped in an exception handler with a fallback return value. A single agent failure produces an error entry in the response but does not crash the pipeline. The final result always has a valid structure.
+.github/workflows/ci.yml   # GitHub Actions CI
+Dockerfile                 # Production container
+docker-compose.yml         # One-command startup with volume persistence
+```
 
-**Strict JSON schema extraction.** Pydantic schemas are transformed to OpenAI strict mode, with validation retries that feed error messages back to the model for self-correction (up to 3 attempts).
+## Design decisions
 
-## ⏱ Runtime Expectations
+**Dependency injection for testability.** Each agent takes `search_fn`, `extract_fn`, and `clean_fn` as constructor arguments defaulting to real implementations. Tests inject mocks — no monkeypatching, no environment hacks.
 
-**Typical runtime:** ~180,000–240,000 ms (≈3–4 minutes) per product space query.
+**Evidence-only extraction.** The extraction prompt instructs the LLM to set fields to `null` rather than guess. Hallucinated market data is worse than missing data.
 
-This runtime is expected and primarily driven by the following stages:
+**Two-tier source filtering (Agent 2).** Tier A selects sources with funding keywords in title/snippet; Tier B falls back to high-signal domains (TechCrunch, Crunchbase, PitchBook). A 4th fallback query runs if neither tier yields 5+ sources.
 
-### 1. Concurrent Web Search
+**Follow-up search (Agent 3).** If both TAM and CAGR come back null after the first pass, a targeted follow-up query runs and extraction repeats.
 
-- Executes 3 parallel search queries
-- Fetches up to 12 results per query
-- Network latency dominates this phase
+**Deterministic scoring (Agent 4).** No LLM calls — reproducible, fast, and fully auditable. Formula weights are visible in the source.
 
-### 2. Source Cleaning & Tiered Filtering
+**Graceful degradation.** Each agent is wrapped with timeout + exception handling. A single agent failure writes to `errors[]` but never crashes the pipeline.
 
-- Deduplicates sources
-- Detects funding signal keywords
-- Prioritizes high-signal funding domains
-- Caps sources to control extraction latency
+**SQLite persistence.** Search results are cached in `cache.db` (survives restarts, shared across requests). Evaluation results are stored in `evaluations.db` for the `--cached` demo flag and future retrieval.
 
-### 3. Structured Extraction (LLM-Based)
+## Runtime
 
-- Bounded with a 180s timeout
-- Limited to 1 retry
-- Hard cap of 6 sources per extraction
-- Strict schema validation (no inferred data allowed)
-
----
-
-### Why It’s Not Instant
-
-The system is optimized for:
-
-- Accuracy over speed
-- Verified funding evidence
-- Schema-validated structured output
-- Guardrails against hallucination
-
-The current configuration prioritizes reliability and structured correctness.  
-Runtime can be reduced further by lowering source caps or timeout limits, at the cost of recall and extraction robustness.
+Typical: **3–4 minutes** per request. The bottleneck is LLM extraction (bounded at ~180–240 s/agent). Agents 1–3 run concurrently, so wall-clock time ≈ slowest agent, not the sum.
 
 ## Limitations
 
-- **Null values are expected.** When public evidence doesn't support a field (SAM, investor names, funding dates), the system returns `null` rather than fabricating data.
-- **Depends on public web evidence.** The system cannot access paywalled reports, private databases, or proprietary datasets. Market sizing data is only as good as what's publicly available.
-- **No persistence.** There is no database. Results are computed per-request and not stored.
-- **In-memory cache only.** Search results are cached per-process to avoid duplicate API calls within a pipeline run. The cache does not survive restarts.
-- **Model variability.** LLM extraction quality varies across runs. The same product space may yield slightly different results on repeated calls, particularly for edge-case fields like investor names or funding dates.
-- **No rate limiting.** The API does not throttle incoming requests or OpenAI API usage. Production deployment would need rate limiting.
-
-## Logging and Observability
-
-The system uses Python's `logging` module at `INFO` level with structured milestone markers.
-
-### Agent-level timing
-
-Each agent logs timing at every stage:
-
-```
-[Agent2] SEARCH_TOTAL in 3.42s
-[Agent2] Cleaned: 28
-[Agent2] Tier A (keyword match): 12
-[Agent2] Using Tier A (12 sources)
-[Agent2] CLEAN_DONE in 0.15s (sources=12, tier=A)
-[Agent2] Sending 12 sources to extraction
-[Agent2] EXTRACT_DONE in 4.21s (companies=6)
-[Agent2] TOTAL in 7.89s
-```
-
-### Search source coverage
-
-Every web search call logs how many sources have populated titles and snippets:
-
-```
-[Search] Source coverage: 15 total, 14 with title, 11 with snippet
-```
-
-### Debug: raw source shape
-
-Set `DEBUG_WEB_SEARCH_SHAPE=true` to dump the raw OpenAI web search source object structure (logged once per process). Useful for diagnosing field name changes in the SDK:
-
-```
-[DEBUG_SHAPE] type=WebSearchSource
-[DEBUG_SHAPE] __dict__={'url': '...', 'title': '...', 'snippet': '...'}
-```
-
-## Future Improvements
-
-- **Persistent cache.** Replace the in-memory dict with Redis or SQLite to survive restarts and share across workers.
-- **Source ranking model.** Rank sources by relevance and recency before sending to extraction, rather than relying solely on keyword/domain heuristics.
-- **Deeper market modeling.** Incorporate SOM (Serviceable Obtainable Market), competitive moat analysis, and funding velocity trends over time.
-- **Configurable scoring weights.** Expose growth/competition/white_space weights as parameters so different evaluation contexts can tune the model.
-- **UI layer.** A frontend that visualizes the report: competitor landscape, funding timeline, market sizing charts, and confidence indicators.
-- **Batch evaluation.** Support evaluating multiple product spaces in a single request with shared search cache benefits.
-- **Database persistence.** Store evaluation results with timestamps for historical comparison and trend analysis.
+- Null values are expected — public evidence doesn't always exist.
+- Depends on public web data; no access to paywalled reports.
+- Model output varies run-to-run, especially for edge-case fields.
+- No rate limiting — add a reverse proxy for production.

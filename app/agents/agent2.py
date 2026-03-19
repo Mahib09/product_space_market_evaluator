@@ -5,7 +5,7 @@ import logging
 import re
 import time
 import uuid
-from collections import Counter
+from collections.abc import Callable, Awaitable
 from urllib.parse import urlparse
 
 from app.core.search import web_search
@@ -121,7 +121,6 @@ def _tiered_filter(sources: list[Source], request_id: str) -> tuple[list[Source]
     return fallback, "fallback"
 
 
-
 def _deduplicate_companies(companies: list) -> list:
     seen: set[str] = set()
     unique: list = []
@@ -134,101 +133,112 @@ def _deduplicate_companies(companies: list) -> list:
     return unique
 
 
-async def run_agent2(product_space: str) -> tuple[Startups, list[ErrorItem]]:
-    request_id = uuid.uuid4().hex[:12]
-    errors: list[ErrorItem] = []
-    t_total = time.perf_counter()
+class StartupsAgent:
+    def __init__(
+        self,
+        search_fn: Callable[..., Awaitable[tuple[list[Source], list[ErrorItem]]]] = web_search,
+        extract_fn: Callable[..., Awaitable[tuple[Startups | None, list[ErrorItem]]]] = extract_structured,
+        clean_fn: Callable[[list[Source], int], list[Source]] = clean_sources,
+    ) -> None:
+        self._search = search_fn
+        self._extract = extract_fn
+        self._clean = clean_fn
 
-    logger.info('[Agent2] START request_id=%s product_space="%s"', request_id, product_space)
+    async def run(self, product_space: str) -> tuple[Startups, list[ErrorItem]]:
+        request_id = uuid.uuid4().hex[:12]
+        errors: list[ErrorItem] = []
+        t_total = time.perf_counter()
 
-    # --- 1. Search (3 queries, concurrent) ---
-    query1 = f"{product_space} startup funding Seed Series A Series B 2024 2025"
-    query2 = f'{product_space} "raised" "Series A" "Series B" investors'
-    query3 = f'{product_space} "led by" investors funding round'
+        logger.info('[Agent2] START request_id=%s product_space="%s"', request_id, product_space)
 
-    async def _timed_search(label: str, query: str):
-        t0 = time.perf_counter()
-        (srcs, errs) = await web_search(query, max_results=12)
+        # --- 1. Search (3 queries, concurrent) ---
+        query1 = f"{product_space} startup funding Seed Series A Series B 2024 2025"
+        query2 = f'{product_space} "raised" "Series A" "Series B" investors'
+        query3 = f'{product_space} "led by" investors funding round'
+
+        async def _timed_search(label: str, query: str):
+            t0 = time.perf_counter()
+            (srcs, errs) = await self._search(query, max_results=12)
+            logger.info(
+                "[Agent2] %s request_id=%s in %.2fs raw=%d",
+                label, request_id, time.perf_counter() - t0, len(srcs) if srcs else 0
+            )
+            return (srcs, errs)
+
+        (sources1, errs1), (sources2, errs2), (sources3, errs3) = await asyncio.gather(
+            _timed_search("QUERY1_DONE", query1),
+            _timed_search("QUERY2_DONE", query2),
+            _timed_search("QUERY3_DONE", query3),
+        )
+        errors.extend(errs1 or [])
+        errors.extend(errs2 or [])
+        errors.extend(errs3 or [])
+
+        merged = sources1 + sources2 + sources3
+        cleaned = self._clean(merged, 40)
+        filtered, tier_used = _tiered_filter(cleaned, request_id)
+
+        # fallback search if too few sources
+        if len(filtered) < 5 and len(cleaned) > 0:
+            fallback_query = (
+                f'{product_space} startup raised seed "Series A" "Series B"'
+                f' led by investors funding round'
+            )
+            fb_sources, fb_errs = await self._search(fallback_query, max_results=12)
+            errors.extend(fb_errs)
+
+            merged_fb = merged + fb_sources
+            cleaned_fb = self._clean(merged_fb, 40)
+            filtered, tier_used = _tiered_filter(cleaned_fb, request_id)
+
+        # ✅ hard cap sources (key speed win)
+        sources = filtered[:_SOURCES_CAP]
         logger.info(
-            "[Agent2] %s request_id=%s in %.2fs raw=%d",
-            label, request_id, time.perf_counter() - t0, len(srcs) if srcs else 0
+            "[Agent2] SOURCES request_id=%s tier=%s sources=%d",
+            request_id, tier_used, len(sources)
         )
-        return (srcs, errs)
 
-    (sources1, errs1), (sources2, errs2), (sources3, errs3) = await asyncio.gather(
-        _timed_search("QUERY1_DONE", query1),
-        _timed_search("QUERY2_DONE", query2),
-        _timed_search("QUERY3_DONE", query3),
-    )
-    errors.extend(errs1 or [])
-    errors.extend(errs2 or [])
-    errors.extend(errs3 or [])
+        # --- 2. Extract (bounded) ---
+        instructions = _EXTRACTION_INSTRUCTIONS.replace("{product_space}", product_space)
+        logger.info("[Agent2] EXTRACT_START")
+        t_extract = time.perf_counter()
+        try:
+            report, extract_errors = await asyncio.wait_for(
+                self._extract(
+                    agent=_AGENT,
+                    schema_model=Startups,
+                    product_space=product_space,
+                    sources=sources,
+                    instructions=instructions,
+                    max_retries=_EXTRACT_RETRIES,  # ✅ fewer retries
+                ),
+                timeout=_EXTRACT_TIMEOUT_S,
+            )
+        except asyncio.TimeoutError:
+            logger.warning("[Agent2] EXTRACT_TIMEOUT request_id=%s after %.2fs", request_id, time.perf_counter() - t_extract)
+            errors.append(ErrorItem(agent=_AGENT, message="Extract_Timeout"))
+            return Startups(companies=[], sources=sources, startup_count=0), errors
 
-    merged = sources1 + sources2 + sources3
-    cleaned = clean_sources(merged, max_results=40)
-    filtered, tier_used = _tiered_filter(cleaned, request_id)
+        errors.extend(extract_errors)
 
-    # fallback search if too few sources
-    if len(filtered) < 5 and len(cleaned) > 0:
-        fallback_query = (
-            f'{product_space} startup raised seed "Series A" "Series B"'
-            f' led by investors funding round'
+        companies_count = len(report.companies) if report and report.companies else 0
+        logger.info(
+            "[Agent2] EXTRACT_DONE request_id=%s in %.2fs companies=%d extract_errors=%d",
+            request_id, time.perf_counter() - t_extract, companies_count, len(extract_errors)
         )
-        fb_sources, fb_errs = await web_search(fallback_query, max_results=12)
-        errors.extend(fb_errs)
 
-        merged_fb = merged + fb_sources
-        cleaned_fb = clean_sources(merged_fb, max_results=40)
-        filtered, tier_used = _tiered_filter(cleaned_fb, request_id)
+        if report is None:
+            if not any(e.agent == _AGENT for e in errors):
+                errors.append(ErrorItem(agent=_AGENT, message="No startups extracted"))
+            return Startups(companies=[], sources=sources, startup_count=0), errors
 
-    # ✅ hard cap sources (key speed win)
-    sources = filtered[:_SOURCES_CAP]
-    logger.info(
-        "[Agent2] SOURCES request_id=%s tier=%s sources=%d",
-        request_id, tier_used, len(sources)
-    )
+        # --- 3. Minimal post-process (keep simple) ---
+        report.companies = _deduplicate_companies(report.companies)[:_MAX_COMPANIES]
+        report.startup_count = len(report.companies)
+        report.sources = sources
 
-    # --- 2. Extract (bounded) ---
-    instructions = _EXTRACTION_INSTRUCTIONS.replace("{product_space}", product_space)
-    logger.info("[Agent2] EXTRACT_START")
-    t_extract = time.perf_counter()
-    try:
-        report, extract_errors = await asyncio.wait_for(
-            extract_structured(
-                agent=_AGENT,
-                schema_model=Startups,
-                product_space=product_space,
-                sources=sources,
-                instructions=instructions,
-                max_retries=_EXTRACT_RETRIES,  # ✅ fewer retries
-            ),
-            timeout=_EXTRACT_TIMEOUT_S,
+        logger.info(
+            "[Agent2] TOTAL request_id=%s in %.2fs companies=%d sources=%d errors=%d",
+            request_id, time.perf_counter() - t_total, len(report.companies), len(report.sources), len(errors)
         )
-    except asyncio.TimeoutError:
-        logger.warning("[Agent2] EXTRACT_TIMEOUT request_id=%s after %.2fs", request_id, time.perf_counter() - t_extract)
-        errors.append(ErrorItem(agent=_AGENT, message="Extract_Timeout"))
-        return Startups(companies=[], sources=sources, startup_count=0), errors
-
-    errors.extend(extract_errors)
-
-    companies_count = len(report.companies) if report and report.companies else 0
-    logger.info(
-        "[Agent2] EXTRACT_DONE request_id=%s in %.2fs companies=%d extract_errors=%d",
-        request_id, time.perf_counter() - t_extract, companies_count, len(extract_errors)
-    )
-
-    if report is None:
-        if not any(e.agent == _AGENT for e in errors):
-            errors.append(ErrorItem(agent=_AGENT, message="No startups extracted"))
-        return Startups(companies=[], sources=sources, startup_count=0), errors
-
-    # --- 3. Minimal post-process (keep simple) ---
-    report.companies = _deduplicate_companies(report.companies)[:_MAX_COMPANIES]
-    report.startup_count = len(report.companies)
-    report.sources = sources
-
-    logger.info(
-        "[Agent2] TOTAL request_id=%s in %.2fs companies=%d sources=%d errors=%d",
-        request_id, time.perf_counter() - t_total, len(report.companies), len(report.sources), len(errors)
-    )
-    return report, errors
+        return report, errors

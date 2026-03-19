@@ -1,0 +1,107 @@
+{
+  "request_id": "9c2d5e8a1f3b",
+  "product_space": "vertical SaaS for restaurants",
+  "incumbents": {
+    "players": [
+      {
+        "name": "Toast",
+        "offerings": "POS, payroll, scheduling, online ordering, kitchen display, inventory management",
+        "target_customers": "Full-service and QSR restaurants of all sizes",
+        "differentiators": "Hardware + software bundle, $1.1B ARR, 106,000+ restaurant locations",
+        "sources": []
+      },
+      {
+        "name": "Square for Restaurants",
+        "offerings": "Cloud POS, floor plan management, online ordering, KDS, inventory",
+        "target_customers": "Indie and small chain restaurants",
+        "differentiators": "No upfront hardware cost, Square ecosystem (payments, payroll), strong SMB brand",
+        "sources": []
+      },
+      {
+        "name": "Lightspeed Restaurant",
+        "offerings": "Cloud POS, table management, menu management, reporting, supplier management",
+        "target_customers": "Fine dining, cafes, bars",
+        "differentiators": "Strong international presence, multi-location support, recent acquisition of Upserve",
+        "sources": []
+      },
+      {
+        "name": "Olo",
+        "offerings": "Digital ordering, delivery dispatch, guest data platform, pay-at-table",
+        "target_customers": "Multi-unit restaurant chains (700+ brands)",
+        "differentiators": "Deep enterprise integrations, 2B+ digital orders processed, DoorDash/Uber Eats direct integration",
+        "sources": []
+      },
+      {
+        "name": "TouchBistro",
+        "offerings": "iPad POS, reservations, inventory, staff management, marketing",
+        "target_customers": "Indie full-service restaurants",
+        "differentiators": "Restaurant-first design, dedicated support, strong Canadian market presence",
+        "sources": []
+      }
+    ],
+    "sources": []
+  },
+  "startups": {
+    "companies": [
+      {
+        "name": "Lunchbox",
+        "stage": "Series B",
+        "amount_usd": 50000000,
+        "date": "2022-04-01",
+        "lead_investors": ["Coatue Management"],
+        "sources": []
+      },
+      {
+        "name": "Popmenu",
+        "stage": "Series C",
+        "amount_usd": 65000000,
+        "date": "2022-09-01",
+        "lead_investors": ["General Atlantic"],
+        "sources": []
+      },
+      {
+        "name": "Avocado",
+        "stage": "Seed",
+        "amount_usd": 3500000,
+        "date": "2024-03-01",
+        "lead_investors": [],
+        "sources": []
+      },
+      {
+        "name": "RestoGuru",
+        "stage": "Series A",
+        "amount_usd": 12000000,
+        "date": "2023-07-01",
+        "lead_investors": ["Bessemer Venture Partners"],
+        "sources": []
+      }
+    ],
+    "total_capital_usd": 130500000,
+    "startup_count": 4,
+    "top_investors": ["Coatue Management", "General Atlantic", "Bessemer Venture Partners"],
+    "velocity_note": "Most recent funding activity from 2022-2024. Market showing post-COVID consolidation with later-stage deals.",
+    "sources": []
+  },
+  "market_scan": {
+    "tam_usd": 25000000000,
+    "tam_year": 2024,
+    "sam_usd": 6000000000,
+    "sam_year": 2024,
+    "cagr_5y_percent": 11.2,
+    "confidence": "high",
+    "notes": "Restaurant management software market TAM from Grand View Research ($25B, 2024). CAGR corroborated by Mordor Intelligence. High confidence given multiple independent sources with consistent figures.",
+    "sources": []
+  },
+  "judgement": {
+    "verdict": "NO_GO",
+    "score": 5,
+    "breakdown": {
+      "growth_score": 7,
+      "competition_score": 8,
+      "white_space": 4
+    },
+    "summary": "5 incumbents identified. 4 startups ($131M known funding). TAM ~$25.0B. CAGR ~11.2%. Competitive density or weak growth limits opportunity.",
+    "confidence": "high"
+  },
+  "errors": []
+}

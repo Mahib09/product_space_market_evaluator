@@ -8,3 +8,5 @@ venv/
 *.egg-info/
 dist/
 build/
+cache.db
+evaluations.db

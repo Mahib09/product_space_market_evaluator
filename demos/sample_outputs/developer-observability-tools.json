@@ -1,0 +1,122 @@
+{
+  "request_id": "7b4e9f2a6c1d",
+  "product_space": "developer observability tools",
+  "incumbents": {
+    "players": [
+      {
+        "name": "Datadog",
+        "offerings": "Full-stack observability: metrics, logs, traces, APM, synthetic monitoring, security",
+        "target_customers": "Engineering teams at growth-stage and enterprise companies",
+        "differentiators": "Best-in-class integrations (650+), $2.1B ARR, strong developer adoption flywheel",
+        "sources": []
+      },
+      {
+        "name": "Grafana Labs",
+        "offerings": "Open-source dashboards, Loki (logs), Tempo (traces), Mimir (metrics), Grafana Cloud",
+        "target_customers": "Engineering teams preferring open-source, especially on Kubernetes",
+        "differentiators": "OSS-first community, pluggable architecture, 20M+ users",
+        "sources": []
+      },
+      {
+        "name": "New Relic",
+        "offerings": "All-in-one observability: APM, infrastructure monitoring, distributed tracing, errors, logs",
+        "target_customers": "Mid-market and enterprise DevOps/SRE teams",
+        "differentiators": "Consumption pricing model, strong legacy installed base, OTel-native support",
+        "sources": []
+      },
+      {
+        "name": "Honeycomb",
+        "offerings": "High-cardinality event-based observability optimised for distributed systems",
+        "target_customers": "Platform engineering and SRE teams at tech-forward companies",
+        "differentiators": "BubbleUp ML-powered root cause analysis, OpenTelemetry-native, strong developer love",
+        "sources": []
+      },
+      {
+        "name": "Dynatrace",
+        "offerings": "AI-powered full-stack observability with automatic dependency mapping (Davis AI)",
+        "target_customers": "Large enterprise and FSI organisations",
+        "differentiators": "Auto-instrumentation, strong enterprise contracts, AIOps leadership",
+        "sources": []
+      },
+      {
+        "name": "Elastic (Elastic Observability)",
+        "offerings": "Search-powered logs, metrics, traces on Elasticsearch; integrated SIEM",
+        "target_customers": "Teams with heavy log search and security requirements",
+        "differentiators": "Unified Elastic Stack, strong open-source adoption, self-hosted option",
+        "sources": []
+      }
+    ],
+    "sources": []
+  },
+  "startups": {
+    "companies": [
+      {
+        "name": "Highlight.io",
+        "stage": "Series A",
+        "amount_usd": 8000000,
+        "date": "2023-05-01",
+        "lead_investors": ["Y Combinator"],
+        "sources": []
+      },
+      {
+        "name": "Baselime",
+        "stage": "Seed",
+        "amount_usd": 3600000,
+        "date": "2023-01-01",
+        "lead_investors": ["Firstminute Capital"],
+        "sources": []
+      },
+      {
+        "name": "Axiom",
+        "stage": "Series B",
+        "amount_usd": 55000000,
+        "date": "2024-01-01",
+        "lead_investors": ["GV (Google Ventures)"],
+        "sources": []
+      },
+      {
+        "name": "Groundcover",
+        "stage": "Series A",
+        "amount_usd": 20000000,
+        "date": "2023-11-01",
+        "lead_investors": ["Insight Partners"],
+        "sources": []
+      },
+      {
+        "name": "Dash0",
+        "stage": "Seed",
+        "amount_usd": 6500000,
+        "date": "2024-04-01",
+        "lead_investors": ["Decibel"],
+        "sources": []
+      }
+    ],
+    "total_capital_usd": 93100000,
+    "startup_count": 5,
+    "top_investors": ["GV (Google Ventures)", "Insight Partners", "Y Combinator"],
+    "velocity_note": "Active Seed-to-Series-B activity in 2023-2024, with OTel-native tooling being the dominant investment thesis.",
+    "sources": []
+  },
+  "market_scan": {
+    "tam_usd": 4100000000,
+    "tam_year": 2024,
+    "sam_usd": 1200000000,
+    "sam_year": 2024,
+    "cagr_5y_percent": 16.8,
+    "confidence": "medium",
+    "notes": "TAM from MarketsandMarkets APM and Observability report (2024). CAGR from IDC Cloud Management forecast. Medium confidence — adjacent categories (APM, log management) slightly inflate TAM estimates.",
+    "sources": []
+  },
+  "judgement": {
+    "verdict": "GO",
+    "score": 6,
+    "breakdown": {
+      "growth_score": 7,
+      "competition_score": 8,
+      "white_space": 5
+    },
+    "summary": "6 incumbents identified. 5 startups ($93M known funding). TAM ~$4.1B. CAGR ~16.8%. Market opportunity supports entry.",
+    "confidence": "medium"
+  },
+  "errors": []
+}

@@ -1,0 +1,122 @@
+{
+  "request_id": "3a7f1b9c2e4d",
+  "product_space": "AI sales automation",
+  "incumbents": {
+    "players": [
+      {
+        "name": "Salesforce Einstein",
+        "offerings": "AI-powered CRM with predictive lead scoring, opportunity insights, and automated activity capture",
+        "target_customers": "Enterprise and mid-market B2B sales teams",
+        "differentiators": "Deep CRM data integration, 150,000+ customer base, broad ecosystem",
+        "sources": []
+      },
+      {
+        "name": "HubSpot Sales Hub",
+        "offerings": "AI email assistant, deal intelligence, conversation analysis, automated sequences",
+        "target_customers": "SMB and mid-market sales teams",
+        "differentiators": "Freemium entry point, inbound marketing flywheel, strong SMB brand",
+        "sources": []
+      },
+      {
+        "name": "Outreach",
+        "offerings": "Sales engagement platform with AI-driven sequencing, sentiment analysis, and revenue forecasting",
+        "target_customers": "Mid-market and enterprise SDR/AE teams",
+        "differentiators": "Deep workflow automation, Kaia real-time meeting coaching, broad integrations",
+        "sources": []
+      },
+      {
+        "name": "Salesloft",
+        "offerings": "Revenue orchestration with AI cadence optimisation, deal intelligence, and forecasting",
+        "target_customers": "Enterprise B2B revenue teams",
+        "differentiators": "Acquired Drift for conversational AI; strong enterprise contracts",
+        "sources": []
+      },
+      {
+        "name": "Gong",
+        "offerings": "Conversation intelligence, deal risk scoring, pipeline forecasting from call/email data",
+        "target_customers": "Enterprise sales teams with high call volume",
+        "differentiators": "Best-in-class call analysis accuracy, $250M+ ARR, strong NPS",
+        "sources": []
+      },
+      {
+        "name": "Apollo.io",
+        "offerings": "B2B data + sequencing + AI email writer, all-in-one prospecting",
+        "target_customers": "SMB and mid-market sales reps",
+        "differentiators": "270M contact database, aggressive pricing, high growth trajectory",
+        "sources": []
+      }
+    ],
+    "sources": []
+  },
+  "startups": {
+    "companies": [
+      {
+        "name": "AiSDR",
+        "stage": "Series A",
+        "amount_usd": 15000000,
+        "date": "2024-09-01",
+        "lead_investors": ["Andreessen Horowitz"],
+        "sources": []
+      },
+      {
+        "name": "Artisan AI",
+        "stage": "Series A",
+        "amount_usd": 25000000,
+        "date": "2024-11-01",
+        "lead_investors": ["Glade Brook Capital"],
+        "sources": []
+      },
+      {
+        "name": "11x",
+        "stage": "Series A",
+        "amount_usd": 24000000,
+        "date": "2024-05-01",
+        "lead_investors": ["Benchmark"],
+        "sources": []
+      },
+      {
+        "name": "Regie.ai",
+        "stage": "Series B",
+        "amount_usd": 30000000,
+        "date": "2024-02-01",
+        "lead_investors": ["Madrona Venture Group"],
+        "sources": []
+      },
+      {
+        "name": "Pocus",
+        "stage": "Series A",
+        "amount_usd": 23000000,
+        "date": "2023-10-01",
+        "lead_investors": ["Coatue Management"],
+        "sources": []
+      }
+    ],
+    "total_capital_usd": 117000000,
+    "startup_count": 5,
+    "top_investors": ["Andreessen Horowitz", "Benchmark", "Coatue Management"],
+    "velocity_note": "Significant Series A/B activity in 2023-2024 with $117M known funding across 5 startups.",
+    "sources": []
+  },
+  "market_scan": {
+    "tam_usd": 6800000000,
+    "tam_year": 2024,
+    "sam_usd": 1700000000,
+    "sam_year": 2024,
+    "cagr_5y_percent": 21.3,
+    "confidence": "medium",
+    "notes": "TAM figure from MarketsandMarkets (2024). CAGR from Grand View Research. Both sources agree on strong double-digit growth driven by LLM adoption in enterprise sales workflows.",
+    "sources": []
+  },
+  "judgement": {
+    "verdict": "GO",
+    "score": 6,
+    "breakdown": {
+      "growth_score": 8,
+      "competition_score": 8,
+      "white_space": 5
+    },
+    "summary": "6 incumbents identified. 5 startups ($117M known funding). TAM ~$6.8B. CAGR ~21.3%. Market opportunity supports entry.",
+    "confidence": "medium"
+  },
+  "errors": []
+}

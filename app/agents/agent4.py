@@ -97,81 +97,96 @@ def _competition_score(incumbents: IncumbentsReport, startups: Startups) -> int:
 # Final score + verdict
 # ---------------------------------------------------------------------------
 
+class JudgementAgent:
+    """Pure computation — no constructor args, no async, no I/O."""
+
+    def run(
+        self,
+        incumbents: IncumbentsReport,
+        startups: Startups,
+        market_scan: MarketScan,
+    ) -> Judgement:
+        """Compute a 1-10 score and GO/NO_GO verdict. Pure computation, no API calls."""
+
+        growth = _growth_score(market_scan)
+        competition = _competition_score(incumbents, startups)
+
+        # White space: growth minus competition, mapped to 1-10
+        white_space_raw = growth - competition          # range ~ -10 to +10
+        score_raw = 5 + (white_space_raw / 2)           # +10 → 10, -10 → 0
+        score = _clamp(score_raw, lo=1, hi=10)
+        white_space = _clamp(score_raw, lo=0, hi=10)
+
+        # --- Edge case: insufficient market data ---
+        low_data = (
+            market_scan.confidence == Confidence.LOW
+            and market_scan.tam_usd is None
+            and market_scan.cagr_5y_percent is None
+        )
+        if low_data and score > 5:
+            score = 5
+
+        # --- Edge case: missing competition data ---
+        no_competition = len(incumbents.players) == 0 and (startups.startup_count or 0) == 0
+        if no_competition and score > 6:
+            # Don't assume low competition; cap conservatively unless market is strong
+            if not (market_scan.tam_usd is not None and market_scan.cagr_5y_percent is not None):
+                score = 6
+
+        verdict = Verdict.GO if score >= 6 else Verdict.NO_GO
+        confidence = market_scan.confidence
+
+        # --- Summary ---
+        parts: list[str] = []
+
+        parts.append(f"{len(incumbents.players)} incumbents identified")
+        sc = startups.startup_count or 0
+        funding_str = (
+            f"${startups.total_capital_usd / 1_000_000:,.0f}M known funding"
+            if startups.total_capital_usd
+            else "funding data limited"
+        )
+        parts.append(f"{sc} startups ({funding_str})")
+
+        if market_scan.tam_usd is not None:
+            tam_b = market_scan.tam_usd / 1_000_000_000
+            parts.append(f"TAM ~${tam_b:,.1f}B")
+        if market_scan.cagr_5y_percent is not None:
+            parts.append(f"CAGR ~{market_scan.cagr_5y_percent:.1f}%")
+
+        if low_data:
+            parts.append("Insufficient verified market data")
+        elif verdict == Verdict.GO:
+            parts.append("Market opportunity supports entry")
+        else:
+            parts.append("Competitive density or weak growth limits opportunity")
+
+        summary = ". ".join(parts) + "."
+        logger.info(
+        "[Agent4] SCORE_DONE",
+    )
+
+        return Judgement(
+            verdict=verdict,
+            score=score,
+            breakdown=Breakdown(
+                growth_score=growth,
+                competition_score=competition,
+                white_space=white_space,
+            ),
+            summary=summary,
+            confidence=confidence,
+        )
+
+
 def run_agent4(
     incumbents: IncumbentsReport,
     startups: Startups,
     market: MarketScan,
 ) -> Judgement:
-    """Compute a 1-10 score and GO/NO_GO verdict. Pure computation, no API calls."""
+    """Compute a 1-10 score and GO/NO_GO verdict. Pure computation, no API calls.
 
-    growth = _growth_score(market)
-    competition = _competition_score(incumbents, startups)
-
-    # White space: growth minus competition, mapped to 1-10
-    white_space_raw = growth - competition          # range ~ -10 to +10
-    score_raw = 5 + (white_space_raw / 2)           # +10 → 10, -10 → 0
-    score = _clamp(score_raw, lo=1, hi=10)
-
-    white_space_metric = 5+(white_space_raw /2)
-    white_space = _clamp(white_space_metric,0,10)
-
-    # --- Edge case: insufficient market data ---
-    low_data = (
-        market.confidence == Confidence.LOW
-        and market.tam_usd is None
-        and market.cagr_5y_percent is None
-    )
-    if low_data and score > 5:
-        score = 5
-
-    # --- Edge case: missing competition data ---
-    no_competition = len(incumbents.players) == 0 and (startups.startup_count or 0) == 0
-    if no_competition and score > 6:
-        # Don't assume low competition; cap conservatively unless market is strong
-        if not (market.tam_usd is not None and market.cagr_5y_percent is not None):
-            score = 6
-
-    verdict = Verdict.GO if score >= 6 else Verdict.NO_GO
-    confidence = market.confidence
-
-    # --- Summary ---
-    parts: list[str] = []
-
-    parts.append(f"{len(incumbents.players)} incumbents identified")
-    sc = startups.startup_count or 0
-    funding_str = (
-        f"${startups.total_capital_usd / 1_000_000:,.0f}M known funding"
-        if startups.total_capital_usd
-        else "funding data limited"
-    )
-    parts.append(f"{sc} startups ({funding_str})")
-
-    if market.tam_usd is not None:
-        tam_b = market.tam_usd / 1_000_000_000
-        parts.append(f"TAM ~${tam_b:,.1f}B")
-    if market.cagr_5y_percent is not None:
-        parts.append(f"CAGR ~{market.cagr_5y_percent:.1f}%")
-
-    if low_data:
-        parts.append("Insufficient verified market data")
-    elif verdict == Verdict.GO:
-        parts.append("Market opportunity supports entry")
-    else:
-        parts.append("Competitive density or weak growth limits opportunity")
-
-    summary = ". ".join(parts) + "."
-    logger.info(
-    "[Agent4] SCORE_DONE",
-)
-
-    return Judgement(
-        verdict=verdict,
-        score=score,
-        breakdown=Breakdown(
-            growth_score=growth,
-            competition_score=competition,
-            white_space=white_space,
-        ),
-        summary=summary,
-        confidence=confidence,
-    )
+    Deprecated: Use JudgementAgent().run() instead. Kept for backward compatibility.
+    """
+    agent = JudgementAgent()
+    return agent.run(incumbents, startups, market)

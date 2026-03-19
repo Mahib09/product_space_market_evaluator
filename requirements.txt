@@ -22,5 +22,5 @@ tqdm==4.67.3
 typing-inspection==0.4.2
 typing_extensions==4.15.0
 uvicorn==0.40.0
-rich>=13.0.0
-aiosqlite>=0.20.0
+rich==14.3.3
+aiosqlite==0.22.1

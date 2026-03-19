@@ -242,8 +242,3 @@ class StartupsAgent:
             request_id, time.perf_counter() - t_total, len(report.companies), len(report.sources), len(errors)
         )
         return report, errors
-
-
-async def run_agent2(product_space: str) -> tuple[Startups, list[ErrorItem]]:
-    """Module-level entry point for backward compatibility with the orchestrator."""
-    return await StartupsAgent().run(product_space)

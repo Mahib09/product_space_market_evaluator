@@ -61,7 +61,7 @@ POST /evaluate
 ```
 
 - **Agent 1** — Identifies 5–8 established incumbents: offerings, target customers, differentiators.
-- **Agent 2** — Finds Seed–Series B startups with investor details and funding amounts, backed by evidence only.
+- **Agent 2** — Finds recently funded companies (VC rounds, grants, PE buyouts, acquisitions) with investor details and amounts, backed by evidence only.
 - **Agent 3** — Extracts TAM, SAM, and 5-year CAGR from market research sources.
 - **Agent 4** — Scores 1–10 and returns GO/NO_GO using a transparent formula. Zero API calls.
 
@@ -229,18 +229,21 @@ pip install -r requirements-dev.txt
 pytest tests/unit/ -v --cov=app --cov-report=term-missing
 ```
 
-35 unit tests, no API key required. Tests use dependency injection to mock all external calls.
+45 unit tests, no API key required. Tests use dependency injection to mock all external calls.
 
 ```
 tests/unit/
-├── test_agent1.py        # IncumbentsAgent — 4 tests
-├── test_agent2.py        # StartupsAgent — 4 tests
-├── test_agent3.py        # MarketScanAgent — 3 tests
-├── test_agent4.py        # JudgementAgent scoring — 10 tests
-├── test_cache.py         # SQLite search cache — 2 tests
-├── test_clean.py         # Source cleaning pipeline — 5 tests
-├── test_orchestrator.py  # Pipeline integration — 4 tests
-└── test_persistence.py   # SQLite result store — 3 tests
+├── test_agent1.py         # IncumbentsAgent — 6 tests
+├── test_agent2.py         # StartupsAgent — 4 tests
+├── test_agent2_funding.py # Funding signal + domain detection — 3 tests
+├── test_agent3.py         # MarketScanAgent — 6 tests
+├── test_agent4.py         # JudgementAgent scoring — 10 tests
+├── test_cache.py          # SQLite search cache — 2 tests
+├── test_clean.py          # Source cleaning pipeline — 5 tests
+├── test_config.py         # Config env var defaults — 1 test
+├── test_extract.py        # Evidence block guard — 2 tests
+├── test_orchestrator.py   # Pipeline integration — 4 tests
+└── test_persistence.py    # SQLite result store — 3 tests
 ```
 
 GitHub Actions runs the full unit suite on every push to `main` and `feat/*`.
@@ -302,7 +305,7 @@ demos/
 └── sample_outputs/        # Pre-built JSON results (3 product spaces)
 
 tests/
-├── unit/                  # 35 tests, no API key required
+├── unit/                  # 45 tests, no API key required
 └── integration/           # 1 test, skipped without real API key
 
 .github/workflows/ci.yml   # GitHub Actions CI
@@ -316,9 +319,9 @@ docker-compose.yml         # One-command startup with volume persistence
 
 **Evidence-only extraction.** The extraction prompt instructs the LLM to set fields to `null` rather than guess. Hallucinated market data is worse than missing data.
 
-**Two-tier source filtering (Agent 2).** Tier A selects sources with funding keywords in title/snippet; Tier B falls back to high-signal domains (TechCrunch, Crunchbase, PitchBook). A 4th fallback query runs if neither tier yields 5+ sources.
+**Two-tier source filtering (Agent 2).** Tier A selects sources with funding keywords in title/snippet (VC rounds, grants, acquisitions, PE, IPOs); Tier B falls back to high-signal domains (TechCrunch, Crunchbase, PitchBook, WSJ, FT, Forbes, SEC filings). A 4th fallback query runs if neither tier yields 5+ sources.
 
-**Follow-up search (Agent 3).** If both TAM and CAGR come back null after the first pass, a targeted follow-up query runs and extraction repeats.
+**Follow-up search (Agent 3).** Gated behind `AGENT3_FOLLOWUP=true`. When enabled, if both TAM and CAGR come back null after the first pass, a targeted follow-up query runs and extraction repeats. Off by default to keep the happy-path fast.
 
 **Deterministic scoring (Agent 4).** No LLM calls — reproducible, fast, and fully auditable. Formula weights are visible in the source.
 

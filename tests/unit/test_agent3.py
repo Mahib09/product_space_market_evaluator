@@ -21,7 +21,10 @@ async def test_happy_path():
     assert errors == []
 
 
-async def test_followup_search_triggered_when_tam_and_cagr_both_null():
+async def test_followup_search_triggered_when_tam_and_cagr_both_null(monkeypatch):
+    import app.agents.agent3 as agent3_module
+    monkeypatch.setattr(agent3_module, "AGENT3_FOLLOWUP", True)
+
     no_data = MarketScan(tam_usd=None, cagr_5y_percent=None, confidence=Confidence.LOW)
     with_data = _scan()
     mock_search = AsyncMock(return_value=([_source()], []))
@@ -42,6 +45,19 @@ async def test_five_queries_run_for_non_tech_space():
     agent = MarketScanAgent(search_fn=mock_search, extract_fn=mock_extract)
     await agent.run("precision farming equipment")
     assert mock_search.call_count == 5
+
+
+async def test_followup_search_disabled_by_default(monkeypatch):
+    """When AGENT3_FOLLOWUP is False, follow-up must not run even when TAM+CAGR are null."""
+    import app.agents.agent3 as agent3_module
+    monkeypatch.setattr(agent3_module, "AGENT3_FOLLOWUP", False)
+
+    no_data = MarketScan(tam_usd=None, cagr_5y_percent=None, confidence=Confidence.LOW)
+    mock_search = AsyncMock(return_value=([_source()], []))
+    mock_extract = AsyncMock(return_value=(no_data, []))
+    agent = MarketScanAgent(search_fn=mock_search, extract_fn=mock_extract)
+    await agent.run("AI sales automation")
+    assert mock_search.call_count == 5  # 5 initial only, no follow-up
 
 
 async def test_followup_skipped_when_tam_present():

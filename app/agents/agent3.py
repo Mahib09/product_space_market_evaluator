@@ -6,6 +6,7 @@ import time
 import uuid
 from collections.abc import Callable, Awaitable
 
+from app.config import AGENT3_FOLLOWUP
 from app.core.search import web_search
 from app.core.clean import clean_sources
 from app.core.extract import extract_structured
@@ -95,7 +96,7 @@ class MarketScanAgent:
             f"{product_space} industry size annual growth rate percent",
         ]
 
-        raw_sources, search_errors = await self._search_and_collect(queries, max_results_per_query=10)
+        raw_sources, search_errors = await self._search_and_collect(queries, max_results_per_query=7)
         errors.extend(search_errors)
         search_s = time.perf_counter() - t_search
         raw_count = len(raw_sources) if raw_sources else 0
@@ -107,7 +108,7 @@ class MarketScanAgent:
         )
 
         # --- 2. Clean ---
-        sources = self._clean(raw_sources, 10)
+        sources = self._clean(raw_sources, 7)
         logger.info("[Agent3] CLEAN_DONE")
 
         # --- 3. Extract ---
@@ -123,6 +124,7 @@ class MarketScanAgent:
                 product_space=product_space,
                 sources=sources,
                 instructions=instructions,
+                max_retries=1,
             )
             logger.info(
                 "[Agent3] EXTRACT_DONE seconds=%.2f errors=%d",
@@ -150,15 +152,15 @@ class MarketScanAgent:
             ), errors
 
         # --- 5. Optional follow-up if both TAM and CAGR are missing ---
-        if report.tam_usd is None and report.cagr_5y_percent is None:
-            logger.info("TAM and CAGR both missing — running follow-up search")
+        if AGENT3_FOLLOWUP and report.tam_usd is None and report.cagr_5y_percent is None:
+            logger.info("TAM and CAGR both missing — running follow-up search (AGENT3_FOLLOWUP=true)")
             followup_query = f"{product_space} industry market size billion forecast CAGR"
             followup_sources, followup_errors = await self._search(followup_query, max_results=8)
             errors.extend(followup_errors)
 
             if followup_sources:
                 merged = raw_sources + followup_sources
-                sources = self._clean(merged, 10)
+                sources = self._clean(merged, 7)
 
                 report2, extract_errors2 = await self._extract(
                     agent=_AGENT,
@@ -166,6 +168,7 @@ class MarketScanAgent:
                     product_space=product_space,
                     sources=sources,
                     instructions=instructions,
+                    max_retries=1,
                 )
                 errors.extend(extract_errors2 or [])
 

@@ -44,7 +44,7 @@ _MAX_COMPANIES = 10
 # ✅ simple guardrails
 _SOURCES_CAP = 10
 _EXTRACT_RETRIES = 1
-_EXTRACT_TIMEOUT_S = 240
+_EXTRACT_TIMEOUT_S = 120  # 2-minute cap; halves worst-case stall vs previous 240s
 
 _FUNDING_KEYWORDS = re.compile(
     r"raised|funding|seed|series\s*[abcde]|led\s+by|backed\s+by|round|"

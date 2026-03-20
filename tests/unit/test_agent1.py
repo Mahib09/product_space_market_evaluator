@@ -23,7 +23,7 @@ async def test_happy_path():
     result, errors = await agent.run("AI sales automation")
     assert len(result.players) >= 1
     assert errors == []
-    mock_search.assert_called_once()
+    assert mock_search.call_count == 2
     mock_extract.assert_called_once()
 
 
@@ -42,6 +42,24 @@ async def test_extraction_failure_returns_empty_report_with_error():
     result, errors = await agent.run("AI sales automation")
     assert result.players == []
     assert any(e.agent == "agent1" for e in errors)
+
+
+async def test_two_search_queries_are_made():
+    """Agent 1 must run 2 queries to avoid enterprise-only bias."""
+    mock_search = AsyncMock(return_value=([_source()], []))
+    mock_extract = AsyncMock(return_value=(_report(), []))
+    agent = IncumbentsAgent(search_fn=mock_search, extract_fn=mock_extract)
+    await agent.run("AI sales automation")
+    assert mock_search.call_count == 2
+
+
+async def test_extract_called_with_max_retries_1():
+    mock_search = AsyncMock(return_value=([_source()], []))
+    mock_extract = AsyncMock(return_value=(_report(), []))
+    agent = IncumbentsAgent(search_fn=mock_search, extract_fn=mock_extract)
+    await agent.run("AI sales automation")
+    _, kwargs = mock_extract.call_args
+    assert kwargs.get("max_retries") == 1
 
 
 async def test_search_error_propagates():

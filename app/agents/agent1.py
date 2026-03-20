@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import asyncio
 import logging
 import time
 import uuid
@@ -16,17 +17,19 @@ _AGENT = "agent1"
 _MAX_PLAYERS = 8
 
 _EXTRACTION_INSTRUCTIONS = (
-    "1. Identify established enterprise players relevant to the product space.\n"
-    "2. Return 5-8 incumbents.\n"
-    "3. For each player include:\n"
-    "   - name\n"
-    "   - offerings\n"
-    "   - target_customers\n"
-    "   - differentiators (null if not supported by evidence)\n"
-    "   - sources (list of evidence used for this player)\n"
-    "4. Only use evidence provided below.\n"
-    "5. If a field isn't supported, set it null/empty but only include a player if you have evidence for the player existing in this product space. "
-    "Do not guess.\n"
+    "Identify 5-8 established incumbents that directly compete in the {product_space} space.\n\n"
+    "An 'incumbent' means: a company with an existing product, real customers, and meaningful "
+    "market presence in this specific category — not a tangentially related platform.\n\n"
+    "For each incumbent extract:\n"
+    "  - name\n"
+    "  - offerings: 1-2 sentences describing specifically what they offer in this space\n"
+    "  - target_customers: who buys this product (role, company size, or industry sector)\n"
+    "  - differentiators: their stated competitive advantage, or null if not in evidence\n\n"
+    "Rules:\n"
+    "  - Only include a company if the evidence shows it competes in {product_space} specifically.\n"
+    "  - Do not include general-purpose platforms unless they have a dedicated product for this space.\n"
+    "  - Include incumbents from any industry — not just technology companies.\n"
+    "  - Use only the evidence provided. Do not guess.\n"
 )
 
 
@@ -49,23 +52,32 @@ class IncumbentsAgent:
 
         logger.info('[Agent1] START request_id=%s product_space="%s"', request_id, product_space)
 
-        # 1. Search
-        query = f"{product_space} top vendors competitors market leaders enterprise"
-        sources, search_errors = await self._search(query, max_results=20)
-        errors.extend(search_errors)
-        logger.info("[Agent1] SEARCH_DONE request_id=%s raw=%s", request_id, len(sources))
+        # 1. Search — two concurrent queries to avoid enterprise-only bias
+        query1 = f"{product_space} companies products solutions providers"
+        query2 = f"{product_space} top vendors market leaders competitors"
+
+        (sources1, errs1), (sources2, errs2) = await asyncio.gather(
+            self._search(query1, max_results=10),
+            self._search(query2, max_results=10),
+        )
+        errors.extend(errs1)
+        errors.extend(errs2)
+        merged = sources1 + sources2
+        logger.info("[Agent1] SEARCH_DONE request_id=%s raw=%s", request_id, len(merged))
 
         # 2. Clean
-        sources = self._clean(sources, 12)
+        sources = self._clean(merged, 10)
         logger.info("[Agent1] CLEAN_DONE request_id=%s sources=%s", request_id, len(sources))
 
         # 3. Extract
+        instructions = _EXTRACTION_INSTRUCTIONS.replace("{product_space}", product_space)
         report, extract_errors = await self._extract(
             agent=_AGENT,
             schema_model=IncumbentsReport,
             product_space=product_space,
             sources=sources,
-            instructions=_EXTRACTION_INSTRUCTIONS,
+            instructions=instructions,
+            max_retries=1,
         )
         errors.extend(extract_errors)
 

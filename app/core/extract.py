@@ -112,7 +112,7 @@ async def extract_structured(
     # Separate counters: validation retries vs API retries
     validation_attempts = 0
     api_attempts = 0
-    max_api_attempts = 6  # allows transient retries without giving up too fast
+    max_api_attempts = 3  # 3 attempts sufficient; beyond this is likely a structural problem
 
     while validation_attempts < max_retries and api_attempts < max_api_attempts:
         messages: list[dict] = [

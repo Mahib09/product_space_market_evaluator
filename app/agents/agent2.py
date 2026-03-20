@@ -18,24 +18,25 @@ logger = logging.getLogger(__name__)
 _AGENT = "agent2"
 
 _EXTRACTION_INSTRUCTIONS = (
-    "Extract Seed through Series B startups relevant to {product_space}.\n"
+    "Extract recently funded companies relevant to {product_space}.\n"
     "Return 5-10 companies if evidence supports; otherwise fewer.\n"
     "Only use evidence from the provided snippets and URLs.\n\n"
     "For each company extract:\n"
     "  - name (required)\n"
-    "  - stage (Seed/Series A/Series B/etc.) or null if not explicitly stated\n"
+    "  - stage: the funding type — Seed/Series A/Series B/Grant/Acquisition/IPO/Private Equity/etc.\n"
+    "    Set null if not explicitly stated.\n"
     "  - amount_usd as a numeric value in USD (e.g., 25000000) or null\n"
     "  - date in YYYY-MM-DD format if explicitly stated, otherwise null\n"
-    "  - lead_investors: a list of investor or VC firm names ONLY if explicitly mentioned\n"
-    "    Look for phrases such as 'led by', 'backed by', 'investors include', "
-    "'raised from', or 'participated'.\n"
-    "    Extract firm names exactly as written. If not stated, return an empty list [].\n\n"
+    "  - lead_investors: investor names, VC firms, acquirers, or grant agencies ONLY if explicitly mentioned.\n"
+    "    Look for phrases: 'led by', 'backed by', 'investors include', 'raised from',\n"
+    "    'acquired by', 'grant from', 'funded by', or 'participated'.\n"
+    "    Extract names exactly as written. If not stated, return [].\n\n"
     "Important rules:\n"
     "  - Do NOT guess missing amounts, dates, or investors.\n"
     "  - Do NOT infer investor names from general knowledge.\n"
-    "  - Only include a company if there is clear funding evidence in the snippets.\n"
-    "  - Prefer funding announcement articles (e.g., TechCrunch, press releases, "
-    "company blogs) that explicitly mention funding rounds and investors.\n"
+    "  - Include a company if there is clear evidence of investment, funding, grant, or acquisition.\n"
+    "  - Prefer funding announcements, press releases, company blogs, or news sources\n"
+    "    that explicitly describe a funding or investment event.\n"
 )
 
 _MAX_COMPANIES = 10
@@ -46,27 +47,38 @@ _EXTRACT_RETRIES = 1
 _EXTRACT_TIMEOUT_S = 240
 
 _FUNDING_KEYWORDS = re.compile(
-    r"raised|funding|seed|series\s*[abc]|led\s+by|backed\s+by|round|"
-    r"investment|financing|venture",
+    r"raised|funding|seed|series\s*[abcde]|led\s+by|backed\s+by|round|"
+    r"investment|financing|venture|grant|acqui[rs]|acquisition|acquired|"
+    r"ipo|private\s+equity|\bpe\b|sbir|sttr|strategic\s+partner",
     re.IGNORECASE,
 )
 
 _HIGH_SIGNAL_DOMAINS = {
+    # VC / startup press
     "techcrunch.com",
     "crunchbase.com",
-    "prnewswire.com",
-    "businesswire.com",
     "pitchbook.com",
     "cbinsights.com",
     "venturebeat.com",
-    "bloomberg.com",
-    "reuters.com",
     "sifted.eu",
     "eu-startups.com",
+    # Press release wires
+    "prnewswire.com",
+    "businesswire.com",
+    "globenewswire.com",
+    # Broad financial news (covers all industries)
+    "bloomberg.com",
+    "reuters.com",
+    "wsj.com",
+    "ft.com",
+    "forbes.com",
+    # Regulatory / public filings
+    "sec.gov",
 }
 
 _FUNDING_URL_PATTERN = re.compile(
-    r"funding|series-[abc]|seed-round|raises|investment|venture|fundrais",
+    r"funding|series-[abcde]|seed-round|raises|investment|venture|fundrais|"
+    r"grant|acqui[rs]|ipo|private-equity",
     re.IGNORECASE,
 )
 
@@ -152,9 +164,9 @@ class StartupsAgent:
         logger.info('[Agent2] START request_id=%s product_space="%s"', request_id, product_space)
 
         # --- 1. Search (3 queries, concurrent) ---
-        query1 = f"{product_space} startup funding Seed Series A Series B 2024 2025"
-        query2 = f'{product_space} "raised" "Series A" "Series B" investors'
-        query3 = f'{product_space} "led by" investors funding round'
+        query1 = f"{product_space} company funding investment raised 2023 2024 2025"
+        query2 = f'{product_space} company raised investment round funding grant acquisition'
+        query3 = f'{product_space} company "led by" "backed by" investors funding'
 
         async def _timed_search(label: str, query: str):
             t0 = time.perf_counter()
@@ -180,10 +192,7 @@ class StartupsAgent:
 
         # fallback search if too few sources
         if len(filtered) < 5 and len(cleaned) > 0:
-            fallback_query = (
-                f'{product_space} startup raised seed "Series A" "Series B"'
-                f' led by investors funding round'
-            )
+            fallback_query = f'{product_space} startup company investment funding raised investors'
             fb_sources, fb_errs = await self._search(fallback_query, max_results=12)
             errors.extend(fb_errs)
 

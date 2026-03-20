@@ -35,6 +35,15 @@ async def test_followup_search_triggered_when_tam_and_cagr_both_null():
     assert mock_extract.call_count == 2
 
 
+async def test_five_queries_run_for_non_tech_space():
+    """All 5 queries must run even for non-tech product spaces."""
+    mock_search = AsyncMock(return_value=([_source()], []))
+    mock_extract = AsyncMock(return_value=(_scan(), []))
+    agent = MarketScanAgent(search_fn=mock_search, extract_fn=mock_extract)
+    await agent.run("precision farming equipment")
+    assert mock_search.call_count == 5
+
+
 async def test_followup_skipped_when_tam_present():
     mock_search = AsyncMock(return_value=([_source()], []))
     mock_extract = AsyncMock(return_value=(_scan(), []))

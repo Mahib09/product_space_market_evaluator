@@ -79,20 +79,20 @@ class MarketScanAgent:
         logger.info("[Agent3] SEARCH_START request_id=%s", request_id)
         t_search = time.perf_counter()
         queries = [
-            # Direct market sizing
+            # Direct market sizing — works for any industry
             f"{product_space} market size 2024 2025 CAGR",
 
-            # "Industry report" phrasing (often used by publishers)
+            # Report/forecast phrasing used by publishers across all industries
             f"{product_space} market report market size forecast",
 
-            # TAM + CAGR keywords together
-            f"{product_space} TAM SAM CAGR forecast",
+            # Explicit size + USD phrasing (avoids VC jargon like "TAM SAM")
+            f"{product_space} total market size billion USD forecast 2024 2025",
 
-            # Analyst/report brands (works across categories)
-            f"{product_space} market size Gartner Forrester IDC",
+            # Broader analyst firms covering medical, ag, industrial, and tech
+            f"{product_space} market size research report Grand View Research Mordor Allied Market Research",
 
-            # "Software/tools" framing (helps when product_space is a tool)
-            f"{product_space} software market size forecast CAGR",
+            # Industry-neutral growth framing (replaces "software market size")
+            f"{product_space} industry size annual growth rate percent",
         ]
 
         raw_sources, search_errors = await self._search_and_collect(queries, max_results_per_query=10)

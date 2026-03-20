@@ -100,6 +100,7 @@ cp .env.example .env
 | `OPENAI_MODEL_SEARCH` | `gpt-4.1` | Model used for web search |
 | `OPENAI_MODEL_EXTRACT` | `gpt-5` | Model used for structured extraction |
 | `DEBUG_WEB_SEARCH_SHAPE` | `false` | Log raw web search source shape once per process |
+| `AGENT3_FOLLOWUP` | `false` | Enable Agent 3 follow-up search when TAM+CAGR are null (adds 60–120 s) |
 
 ### Run the server
 
@@ -327,7 +328,9 @@ docker-compose.yml         # One-command startup with volume persistence
 
 ## Runtime
 
-Typical: **3–4 minutes** per request. The bottleneck is LLM extraction (bounded at ~180–240 s/agent). Agents 1–3 run concurrently, so wall-clock time ≈ slowest agent, not the sum.
+Typical: **1–2 minutes** per request. The bottleneck is LLM extraction (gpt-5). Agents 1–3 run concurrently, so wall-clock time ≈ slowest agent, not the sum.
+
+Set `AGENT3_FOLLOWUP=true` in `.env` to enable a second extraction pass for Agent 3 when market data is sparse — adds 60–120 s.
 
 ## Limitations
 
